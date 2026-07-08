@@ -1,0 +1,109 @@
+substitutions:
+  device_name: "persiana-bany"
+  device_id: "persiana_bany"
+  friendly_name: "Persiana Bany"
+  topic_prefix: "persiana_bany"
+  static_ip: "10.0.20.56"
+
+packages:
+  # Hardware configuration
+  hardware: !include
+    file: ../hardware/shelly-25.yaml
+    vars:
+      device_name: ${device_name}
+      friendly_name: ${friendly_name}
+
+  # Common functionality
+  wifi: !include
+    file: ../common/wifi.yaml
+    vars:
+      device_name: ${device_name}
+      static_ip: ${static_ip}
+
+  mqtt: !include
+    file: ../common/mqtt.yaml
+    vars:
+      device_name: ${device_name}
+
+  logger: !include ../common/logger.yaml
+  web-server: !include ../common/web-server.yaml
+  reset: !include ../common/reset.yaml
+
+# Device-specific sensor logic
+sensor:
+  # Temperature safety monitoring
+  - platform: template
+    name: "Blind Temperature Monitor"
+    lambda: |-
+      // Reference the NTC temperature sensor from hardware package
+      if (id(ntc_temperature).has_state()) {
+        return id(ntc_temperature).state;
+      }
+      return NAN;
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 30s
+    on_value_range:
+      above: 90
+      then: # Security shutdown by overheating
+        - switch.turn_on: _shutdown
+
+globals:
+  - id: sw1_state
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0: open next, 1: stop next, 2: close next, 3: stop next
+
+# Device-specific input logic (single momentary button, SW1 only:
+# cycles open -> stop -> close -> stop on each press)
+binary_sensor:
+  - platform: template
+    name: "SW1"
+    id: sw1
+    lambda: |-
+      return id(input_a).state;
+    filters:
+      - delayed_on_off: 100ms
+    on_press:
+      then:
+        - lambda: |-
+            auto call = id(blind).make_call();
+            switch (id(sw1_state)) {
+              case 0: call.set_command_open(); break;
+              case 2: call.set_command_close(); break;
+              default: call.set_command_stop(); break;
+            }
+            call.perform();
+            id(sw1_state) = (id(sw1_state) + 1) % 4;
+
+# Blind control logic - device-specific behavior
+cover:
+  - platform: current_based
+    name: "Blind"
+    id: blind
+
+    # Use current sensors from hardware package
+    open_sensor: open_current
+    # Motor draws ~1A while moving (big shutter); threshold must sit below that
+    open_moving_current_threshold: 0.5
+    open_duration: 12s
+    open_action:
+      - switch.turn_on: relay_a  # Hardware package relay ID
+
+    close_sensor: close_current
+    close_moving_current_threshold: 0.5
+    close_duration: 10s
+    close_action:
+      - switch.turn_on: relay_b  # Hardware package relay ID
+
+    stop_action:
+      - switch.turn_off: relay_a  # Hardware package relay ID
+      - switch.turn_off: relay_b  # Hardware package relay ID
+
+    # Device-specific behavior parameters
+    obstacle_rollback: 30%
+    start_sensing_delay: 0.8s
+    malfunction_detection: true
+    malfunction_action:
+      then:
+        - logger.log: "Malfunction detected. Relay welded."
