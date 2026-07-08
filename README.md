@@ -62,7 +62,7 @@ All shutters expose a standard `cover` entity named `Blind`, driven over MQTT wi
 
 **Input types**:
 - **Button** — single momentary push-button input; each press advances a state machine that cycles open → stop → close → stop.
-- **Dual switch** — two maintained-contact switches (open/close); flipping one on drives the cover, flipping it back off stops it.
+- **Dual switch** — latching 3-button wall switch (up/stop/down) with three terminals: SW1, SW2, VCC.
 
 **Motor current** is each motor's measured draw while moving. The `current_based` cover's `*_moving_current_threshold` must sit **below** that device's actual draw (roughly half is a good pick) — never copy a threshold from another device: if the threshold ends up above the real draw, the cover thinks it hit the endstop immediately and cuts the relay after ~1s. Values marked *est.* come from config comments, not a logged measurement.
 
