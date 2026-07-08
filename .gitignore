@@ -5,6 +5,7 @@
 # You can modify this file to suit your needs.
 /.esphome/
 /secrets.yaml
+/common/secrets.yaml
 /src/.gitignore
 
 # Ignore ESPHome build files
@@ -19,3 +20,4 @@ devenv.local.nix
 
 # pre-commit
 .pre-commit-config.yaml
+.venv
