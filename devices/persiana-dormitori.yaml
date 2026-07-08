@@ -26,7 +26,6 @@ packages:
   logger: !include ../common/logger.yaml
   web-server: !include ../common/web-server.yaml
   reset: !include ../common/reset.yaml
-  time: !include ../common/time.yaml
 
 # Device-specific WiFi configuration
 wifi:

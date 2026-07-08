@@ -52,22 +52,34 @@ devenv tasks run dashboard:serve
 
 ### 🪟 Shutters
 - **persiana-dormitori** - Bedroom shutter
+- **persiana-cuina-pica** - Shutter
+- **persiana-cuina-sud** - Shutter
+- **persiana-menjador** - Dining room shutter
+- **persiana-bany** - Bathroom shutter
+- **persiana-conills** - Shutter, dual maintained switches
+- **persiana-habitacio-sud** - Bedroom (south) shutter, dual maintained switches
 - **persiana-marc-*** - Living area shutters
 
-## 📡 Device Reference: IPs & MQTT Actions
+## 📡 Device Reference: IPs, mDNS & MQTT Actions
 
-All devices publish/subscribe on the broker configured in `common/mqtt.yaml`, and every entity (switches, covers, sensors, lights) is also controllable via ESPHome's standard native MQTT topics (e.g. `<device_name>/switch/<name>/command`) regardless of what's listed below — this table only covers **custom, hand-written** MQTT topics. IPs marked "DHCP" have no static IP configured in ESPHome (`common/wifi.yaml` doesn't currently wire up `manual_ip`, so any `static_ip` substitution is just documentation of an expected router-side DHCP reservation, not an enforced setting).
+All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Every entity (switches, covers, sensors, lights) is controllable via ESPHome's standard native MQTT topics (`<device-name>/<domain>/<object_id>/command`); the MQTT column below lists the **custom, hand-written** topics plus — for shutters with a cover entity — the standard cover command topic, since that's the main way to drive them. IPs marked "DHCP" have no static IP configured in ESPHome (`common/wifi.yaml` doesn't currently wire up `manual_ip`, so any `static_ip` substitution is just documentation of an expected router-side DHCP reservation, not an enforced setting). mDNS names follow the ESPHome device name: `<device-name>.local` (also serves the web UI).
 
-| Device | IP | Custom MQTT Actions |
-|---|---|---|
-| **llum-cuina** | `10.0.20.34` | `llum_cuina/toggle/llum_barra` — toggle bar lights<br>`llum_cuina/toggle/llum_pica` — toggle sink lights<br>`llum_cuina/brightness_cold_white` — set cold-white brightness (`{"brightness": 0.0-1.0}`)<br>`llum_cuina/brightness_warm_white` — set warm-white brightness (`{"brightness": 0.0-1.0}`)<br>`llum_cuina/toggle_effect` — toggle the fade effect |
-| **llum-ambient-dormitori** | DHCP | none (standard light entity only) |
-| **llum-escala** | DHCP | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently below horizon (nighttime); no-op during the day |
-| **llum-ventilador-marc** | `10.0.20.31` | none (standard switch entities `Output 1`/`Output 2` only) |
-| **llum-ventilador-menjador** | DHCP | none (standard switch entities only) |
-| **persiana-dormitori** | DHCP | none (standard cover entity `Blind` only) |
-| **persiana-marc-nord** | `10.0.20.25` | `persiana_marc_nord/open` — toggle open relay<br>`persiana_marc_nord/close` — toggle close relay |
-| **persiana-marc-piscina** | `10.0.20.24` | `persiana_marc_piscina/open` — toggle open relay<br>`persiana_marc_piscina/close` — toggle close relay |
+| Device | Type | IP | mDNS | MQTT Actions |
+|---|---|---|---|---|
+| **llum-cuina** | 💡 Light — Shelly Plus RGBW PM | `10.0.20.34` | `llum-cuina.local` | `llum_cuina/toggle/llum_barra` — toggle bar lights<br>`llum_cuina/toggle/llum_pica` — toggle sink lights<br>`llum_cuina/brightness_cold_white` — set cold-white brightness (`{"brightness": 0.0-1.0}`)<br>`llum_cuina/brightness_warm_white` — set warm-white brightness (`{"brightness": 0.0-1.0}`)<br>`llum_cuina/toggle_effect` — toggle the fade effect |
+| **llum-ambient-dormitori** | 💡 Light — Shelly RGBW2 | DHCP | `llum-ambient-dormitori.local` | none custom (standard light entity) |
+| **llum-escala** | 💡 Light — Shelly Plus 1 | DHCP | `llum-escala.local` | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently below horizon (nighttime); no-op during the day |
+| **llum-ventilador-marc** | 💨 Fan/light relays — Shelly Plus 2 | DHCP | `llum-ventilador-marc.local` | none custom (standard switch entities `Output 1`/`Output 2`) |
+| **llum-ventilador-menjador** | 💨 Fan/light relays — Shelly 2.5 | DHCP | `llum-ventilador-menjador.local` | none custom (standard switch entities) |
+| **persiana-dormitori** | 🪟 Shutter — Shelly 2.5, **dual maintained switches** (flip to open/close, flip back to stop) | DHCP | `persiana-dormitori.local` | `persiana-dormitori/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-cuina-pica** | 🪟 Shutter — Shelly 2.5, **single momentary button** (cycles open → stop → close → stop) | `10.0.20.51` | `persiana-cuina-pica.local` | `persiana-cuina-pica/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-cuina-sud** | 🪟 Shutter — Shelly 2.5, **single momentary button** (cycles open → stop → close → stop) | `10.0.20.50` | `persiana-cuina-sud.local` | `persiana-cuina-sud/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-menjador** | 🪟 Shutter — Shelly 2.5, **single momentary button** (cycles open → stop → close → stop) | `10.0.20.52` | `persiana-menjador.local` | `persiana-menjador/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-bany** | 🪟 Shutter — Shelly 2.5, **single momentary button** (cycles open → stop → close → stop) | `10.0.20.56` | `persiana-bany.local` | `persiana-bany/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-conills** | 🪟 Shutter — Shelly 2.5, **dual maintained switches** (flip to open/close, flip back to stop) | `10.0.20.57` | `persiana-conills.local` | `persiana-conills/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-habitacio-sud** | 🪟 Shutter — Shelly 2.5, **dual maintained switches** (flip to open/close, flip back to stop) | `10.0.20.58` | `persiana-habitacio-sud.local` | `persiana-habitacio-sud/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-marc-nord** | 🪟 Shutter — Shelly Plus 2, **single momentary button** (cycles up → stop → down → stop); direct relay control, **no cover entity** | `10.0.20.25` | `persiana-marc-nord.local` | `persiana_marc_nord/open` — toggle open relay<br>`persiana_marc_nord/close` — toggle close relay |
+| **persiana-marc-piscina** | 🪟 Shutter — Shelly Plus 2, **single momentary button** (cycles up → stop → down → stop); direct relay control, **no cover entity** | `10.0.20.24` | `persiana-marc-piscina.local` | `persiana_marc_piscina/open` — toggle open relay<br>`persiana_marc_piscina/close` — toggle close relay |
 
 **Shared/global topic** — not device-specific: `halt_automations` (payload `ON`/`OFF`) pauses automations on every device that includes `packages/halt-automations.yaml` (currently: `llum-cuina`, `llum-ambient-dormitori`, `llum-ventilador-menjador`, `persiana-marc-nord`, `persiana-marc-piscina`). Publishing to it affects **all** of those devices at once, since the topic has no per-device prefix.
 

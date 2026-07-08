@@ -9,6 +9,13 @@ esphome:
 esp8266:
   board: esp01_1m
 
+wifi:
+  # ESP8266 Arduino core has LOW/HIGH power-save modes swapped, so HIGH here
+  # actually gives the non-aggressive behavior. Without it, the default
+  # power saving causes intermittent WiFi/MQTT drops that make the device
+  # unresponsive. https://github.com/esphome/issues/issues/1532
+  power_save_mode: HIGH
+
 # Status LED (built-in)
 status_led:
   pin:
@@ -34,11 +41,9 @@ sensor:
     current_a:
       name: "${friendly_name} Channel A Current"
       id: open_current
-      internal: true
     current_b:
       name: "${friendly_name} Channel B Current"
       id: close_current
-      internal: true
     update_interval: 0.5s
 
   # NTC Temperature sensor chain
