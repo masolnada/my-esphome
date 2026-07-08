@@ -56,7 +56,7 @@ binary_sensor:
           - logger.log: "${devicename} Button - TAP"
           - switch.toggle: relay_1
 
-      # Hold (long press) - turn on relay_2, then off after 30 seconds
+      # Hold (long press) - turn on relay_2, then off after 60 minutes
       - timing:
           - ON for at least 1s
         then:
@@ -66,7 +66,7 @@ binary_sensor:
               condition:
                 switch.is_on: relay_2
               then:
-                - delay: 20min
+                - delay: 60min
                 - switch.turn_off: relay_2
     internal: true
   
