@@ -3,6 +3,7 @@ substitutions:
   device_id: "persiana_dormitori"
   friendly_name: "Persiana Dormitori"
   topic_prefix: "persiana_dormitori"
+  static_ip: "10.0.20.53"
 
 packages:
   # Hardware configuration
@@ -17,6 +18,7 @@ packages:
     file: ../common/wifi.yaml
     vars:
       device_name: ${device_name}
+      static_ip: ${static_ip}
 
   mqtt: !include
     file: ../common/mqtt.yaml
