@@ -1,24 +1,4 @@
 globals:
-  
-  - id: shutter_open_time
-    type: std::string
-    restore_value: yes
-    initial_value: '"08:30"'  # Default open time
-  
-  - id: shutter_close_time
-    type: std::string
-    restore_value: yes
-    initial_value: '"19:00"'  # Default close time
-
-  - id: shutter_opened_today
-    type: bool
-    restore_value: no
-    initial_value: "false"
-
-  - id: shutter_closed_today
-    type: bool
-    restore_value: no
-    initial_value: "false"
 
   - id: input_1_state
     type: int
@@ -29,17 +9,6 @@ globals:
     type: bool
     restore_value: no
     initial_value: "false"
-
-  # Offsets for sunrise and sunset in minutes
-  - id: sunrise_offset
-    type: int
-    restore_value: yes
-    initial_value: '0'  # Default: No offset
-
-  - id: sunset_offset
-    type: int
-    restore_value: yes
-    initial_value: '0'  # Default: No offset
 
   - id: shutter_direction
     type: std::string
@@ -72,20 +41,8 @@ text_sensor:
         }
         id(shutter_direction) = "stopped";
         return std::string("Stopped");
-      }     
+      }
 
-  - platform: template
-    name: "Shutter Open Time"
-    update_interval: 10s
-    lambda: |-
-      return id(shutter_open_time);
-
-  - platform: template
-    name: "Shutter Close Time"
-    update_interval: 10s
-    lambda: |-
-      return id(shutter_close_time);
-   
 mqtt:
   on_message:
 
@@ -98,70 +55,6 @@ mqtt:
       qos: 0
       then:
         - switch.toggle: relay_2
-
-    # MQTT topic to set the open time
-    - topic: "${topic_prefix}/set_open_time"
-      qos: 0
-      then:
-        - lambda: |-
-            id(shutter_open_time) = x.c_str(); 
-
-    # MQTT topic to set the close time
-    - topic: "${topic_prefix}/set_close_time"
-      qos: 0
-      then:
-        - lambda: |-
-            id(shutter_close_time) = x.c_str(); 
-
-    # MQTT topic to return the stored open and close times
-    - topic: "${topic_prefix}/info"
-      qos: 0
-      then:
-        - mqtt.publish:
-            topic: "shutter/status"
-            payload: !lambda |-
-              auto current_time = id(sntp_time).now();
-              char buffer[6];
-              sprintf(buffer, "%02d:%02d", current_time.hour, current_time.minute);
-              std::string current_time_str = buffer;
-
-              char payload[60];
-              snprintf(payload, sizeof(payload), "Open Time: %s\nClose Time: %s\nCurrent Time: %s\n", 
-                       id(shutter_open_time).c_str(), 
-                       id(shutter_close_time).c_str(),
-                       current_time_str.c_str());
-              return payload;
-
-# Automation to check the current time and trigger shutters open/close
-interval:
-  - interval: 1min
-    then:
-      - lambda: |-
-          auto current_time = id(sntp_time).now();
-          char buffer[6];
-          sprintf(buffer, "%02d:%02d", current_time.hour, current_time.minute);
-          std::string current_time_str = buffer;
-
-          // Check if it's time to open the shutters
-          if (current_time_str == id(shutter_open_time) && !id(shutter_opened_today)) {
-            id(relay_1).turn_on();
-            id(shutter_opened_today) = true;  
-          }
-
-          // Check if it's time to close the shutters
-          if (current_time_str == id(shutter_close_time)) {
-            id(relay_2).turn_on(); 
-            id(shutter_closed_today) = true;
-          }
-      
-       # Reset open/close flags at midnight for the next day
-      - lambda: |-
-          auto current_time = id(sntp_time).now();
-          if (current_time.hour == 0 && current_time.minute == 0) {
-            id(shutter_opened_today) = false;
-            id(shutter_closed_today) = false;
-          }
-
 
 # Internal Shelly Switch Outputs
 switch:

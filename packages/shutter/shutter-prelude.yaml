@@ -17,9 +17,7 @@ packages:
   web-server: !include ../../common/web-server.yaml
   
   mqtt: !include ../../common/mqtt.yaml
-  
-  sun: !include ../../common/sun.yaml
-  
+
   halt_automations: !include ../../packages/halt-automations.yaml
 
   wifi: !include 
