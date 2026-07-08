@@ -55,6 +55,8 @@ binary_sensor:
     id: open_switch
     lambda: |-
       return id(input_a).state;
+    filters:
+      - delayed_on_off: 100ms
     on_state:
       - if:
           condition:
@@ -62,13 +64,21 @@ binary_sensor:
           then:
             - cover.open: blind
           else:
-            - cover.stop: blind
+            # A direct up->down flip releases this contact as the other one
+            # closes; only a true stop (both contacts open) halts the cover
+            - if:
+                condition:
+                  binary_sensor.is_off: close_switch
+                then:
+                  - cover.stop: blind
 
   - platform: template
     name: "Close Switch"
     id: close_switch
     lambda: |-
       return id(input_b).state;
+    filters:
+      - delayed_on_off: 100ms
     on_state:
       - if:
           condition:
@@ -76,7 +86,13 @@ binary_sensor:
           then:
             - cover.close: blind
           else:
-            - cover.stop: blind
+            # A direct down->up flip releases this contact as the other one
+            # closes; only a true stop (both contacts open) halts the cover
+            - if:
+                condition:
+                  binary_sensor.is_off: open_switch
+                then:
+                  - cover.stop: blind
 
 # Blind control logic - device-specific behavior
 cover:
