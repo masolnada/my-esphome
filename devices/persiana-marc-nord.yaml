@@ -88,13 +88,14 @@ cover:
     open_sensor: current_channel_2
     # Motor draws ~0.73A while moving; threshold must sit below that
     open_moving_current_threshold: 0.4
-    open_duration: 12s
+    # Full travel measured 2026-07 via MQTT (motor-on until endstop current drop)
+    open_duration: 17s
     open_action:
       - switch.turn_on: relay_1
 
     close_sensor: current_channel_1
     close_moving_current_threshold: 0.4
-    close_duration: 10s
+    close_duration: 16.5s
     close_action:
       - switch.turn_on: relay_2
 
