@@ -3,7 +3,7 @@ substitutions:
   device_id: "persiana_marc_nord"
   friendly_name: "Persiana Marc Nord"
   topic_prefix: "persiana_marc_nord"
-  static_ip: "10.0.20.25"
+  static_ip: "10.0.20.54"
   # On this PCB the ADE7953 channels are crossed relative to the relays:
   # channel A (current_channel_2) measures the GPIO13 relay (open),
   # channel B (current_channel_1) measures the GPIO12 relay (close).

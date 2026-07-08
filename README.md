@@ -42,24 +42,6 @@ esphome run devices/llum-cuina.yaml --device OTA
 devenv tasks run dashboard:serve
 ```
 
-## 🏡 My Devices
-
-### 💡 Lights
-- **llum-cuina** - Kitchen RGBW with effects
-- **llum-ambient-dormitori** - Bedroom mood lighting
-- **llum-escala** - Auto stairs light
-- **llum-ventilador-*** - Fan lights
-
-### 🪟 Shutters
-- **persiana-dormitori** - Bedroom shutter
-- **persiana-cuina-pica** - Shutter
-- **persiana-cuina-sud** - Shutter
-- **persiana-menjador** - Dining room shutter
-- **persiana-bany** - Bathroom shutter
-- **persiana-conills** - Shutter, dual maintained switches
-- **persiana-habitacio-sud** - Bedroom (south) shutter, dual maintained switches
-- **persiana-marc-*** - Living area shutters
-
 ## 📡 Device Reference: IPs, mDNS & MQTT Actions
 
 All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Every entity (switches, covers, sensors, lights) is controllable via ESPHome's standard native MQTT topics (`<device-name>/<domain>/<object_id>/command`); the lights table's MQTT column lists only the **custom, hand-written** topics. IPs marked "DHCP" have no static IP configured in ESPHome (`common/wifi.yaml` doesn't currently wire up `manual_ip`, so any `static_ip` substitution is just documentation of an expected router-side DHCP reservation, not an enforced setting). mDNS names follow the ESPHome device name: `<device-name>.local` (also serves the web UI).
@@ -86,12 +68,12 @@ All shutters expose a standard `cover` entity named `Blind`, driven over MQTT wi
 
 | Device | Hardware | Input | IP | mDNS | Motor current | Threshold |
 |---|---|---|---|---|---|---|
-| **persiana-marc-piscina** | Shelly Plus 2 | Button | `10.0.20.24` | `persiana-marc-piscina.local` | 0.71 A (measured 2026-07) | 0.4 A |
-| **persiana-marc-nord** | Shelly Plus 2 | Button | `10.0.20.25` | `persiana-marc-nord.local` | 0.73 A (measured 2026-07) | 0.4 A |
 | **persiana-cuina-sud** | Shelly 2.5 | Button | `10.0.20.50` | `persiana-cuina-sud.local` | not measured | 0.5 A |
 | **persiana-cuina-pica** | Shelly 2.5 | Button | `10.0.20.51` | `persiana-cuina-pica.local` | 0.8 A (measured) | 0.4 A |
 | **persiana-menjador** | Shelly 2.5 | Button | `10.0.20.52` | `persiana-menjador.local` | ~1 A (est.) | 0.5 A |
-| **persiana-dormitori** | Shelly 2.5 | Dual switch | `10.0.20.53` | `persiana-dormitori.local` | not measured | 0.5 A |
+| **persiana-marc-piscina** | Shelly Plus 2 | Button | `10.0.20.53` | `persiana-marc-piscina.local` | 0.71 A (measured 2026-07) | 0.4 A |
+| **persiana-marc-nord** | Shelly Plus 2 | Button | `10.0.20.54` | `persiana-marc-nord.local` | 0.73 A (measured 2026-07) | 0.4 A |
+| **persiana-dormitori** | Shelly 2.5 | Dual switch | `10.0.20.55` | `persiana-dormitori.local` | not measured | 0.5 A |
 | **persiana-bany** | Shelly 2.5 | Button | `10.0.20.56` | `persiana-bany.local` | ~1 A (est., big shutter) | 0.5 A |
 | **persiana-conills** | Shelly 2.5 | Dual switch | `10.0.20.57` | `persiana-conills.local` | ~1 A (est., big shutter) | 0.5 A |
 | **persiana-habitacio-sud** | Shelly 2.5 | Dual switch | `10.0.20.58` | `persiana-habitacio-sud.local` | ~1 A (est., big shutter) | 0.5 A |

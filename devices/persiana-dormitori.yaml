@@ -3,7 +3,7 @@ substitutions:
   device_id: "persiana_dormitori"
   friendly_name: "Persiana Dormitori"
   topic_prefix: "persiana_dormitori"
-  static_ip: "10.0.20.53"
+  static_ip: "10.0.20.55"
 
 packages:
   # Hardware configuration
