@@ -102,7 +102,7 @@ cover:
     # Device-specific behavior parameters
     obstacle_rollback: 30%
     start_sensing_delay: 0.8s
-    malfunction_detection: true
-    malfunction_action:
-      then:
-        - logger.log: "Malfunction detected. Relay welded."
+    # Disabled: the ADE7953 only publishes every 0.5s, so right after a
+    # mid-motion reversal the opposite channel still reports the pre-reversal
+    # current and the component false-detects a welded relay and stops.
+    malfunction_detection: false
