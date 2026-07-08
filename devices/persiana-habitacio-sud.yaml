@@ -49,12 +49,14 @@ sensor:
         - switch.turn_on: _shutdown
 
 # Device-specific input logic (maintained contact switch handling)
+# The wall switch is wired with swapped inputs on this device:
+# up -> SW2 (input_b), down -> SW1 (input_a)
 binary_sensor:
   - platform: template
     name: "Open Switch"
     id: open_switch
     lambda: |-
-      return id(input_a).state;
+      return id(input_b).state;
     filters:
       - delayed_on_off: 100ms
     on_state:
@@ -76,7 +78,7 @@ binary_sensor:
     name: "Close Switch"
     id: close_switch
     lambda: |-
-      return id(input_b).state;
+      return id(input_a).state;
     filters:
       - delayed_on_off: 100ms
     on_state:
