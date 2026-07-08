@@ -1,4 +1,8 @@
 # For PCB v0.1.9 with dual core ESP32
+substitutions:
+  # Overridable per device; current_based covers need fast sampling (0.5s)
+  power_update_interval: 10s
+
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
@@ -22,6 +26,7 @@ sensor:
 
     current_a:
       name: "${output_name_2} Current"
+      id: current_channel_2
       entity_category: 'diagnostic'
     active_power_a:
       name: "${output_name_2} Power"
@@ -30,13 +35,14 @@ sensor:
 
     current_b:
       name: "${output_name_1} Current"
+      id: current_channel_1
       entity_category: 'diagnostic'
     active_power_b:
       name: "${output_name_1} Power"
       id: power_channel_1
       entity_category: 'diagnostic'
 
-    update_interval: 10s
+    update_interval: ${power_update_interval}
 
   # Internal NTC Temperature sensor
   - platform: ntc

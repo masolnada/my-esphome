@@ -67,7 +67,6 @@ All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Ev
 **Cover input types** referenced in the table below:
 - **Button** — single momentary push-button input; each press advances a state machine that cycles open → stop → close → stop.
 - **Dual switch** — two maintained-contact switches (open/close); flipping one on drives the cover, flipping it back off stops it.
-- **Button (relay-only)** — same button-cycling behavior as **Button**, but the device drives the relays directly with no ESPHome `cover` entity, so control is via the raw relay-toggle MQTT topics only, not a standard cover command topic.
 
 | Device | Hardware | Type | IP | mDNS | MQTT Actions |
 |---|---|---|---|---|---|
@@ -76,8 +75,8 @@ All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Ev
 | **llum-escala** | Shelly Plus 1 | 💡 Light | DHCP | `llum-escala.local` | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently below horizon (nighttime); no-op during the day |
 | **llum-ventilador-marc** | Shelly Plus 2 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marc.local` | none custom (standard switch entities `Output 1`/`Output 2`) |
 | **llum-ventilador-menjador** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-menjador.local` | none custom (standard switch entities) |
-| **persiana-marc-piscina** | Shelly Plus 2 | 🪟 Cover — Button (relay-only) | `10.0.20.24` | `persiana-marc-piscina.local` | `persiana_marc_piscina/open` — toggle open relay<br>`persiana_marc_piscina/close` — toggle close relay |
-| **persiana-marc-nord** | Shelly Plus 2 | 🪟 Cover — Button (relay-only) | `10.0.20.25` | `persiana-marc-nord.local` | `persiana_marc_nord/open` — toggle open relay<br>`persiana_marc_nord/close` — toggle close relay |
+| **persiana-marc-piscina** | Shelly Plus 2 | 🪟 Cover — Button | `10.0.20.24` | `persiana-marc-piscina.local` | `persiana-marc-piscina/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
+| **persiana-marc-nord** | Shelly Plus 2 | 🪟 Cover — Button | `10.0.20.25` | `persiana-marc-nord.local` | `persiana-marc-nord/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
 | **persiana-cuina-sud** | Shelly 2.5 | 🪟 Cover — Button | `10.0.20.50` | `persiana-cuina-sud.local` | `persiana-cuina-sud/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
 | **persiana-cuina-pica** | Shelly 2.5 | 🪟 Cover — Button | `10.0.20.51` | `persiana-cuina-pica.local` | `persiana-cuina-pica/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |
 | **persiana-menjador** | Shelly 2.5 | 🪟 Cover — Button | `10.0.20.52` | `persiana-menjador.local` | `persiana-menjador/cover/blind/command` — `OPEN`/`CLOSE`/`STOP` (standard cover entity) |

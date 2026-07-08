@@ -1,9 +1,111 @@
-packages:
+substitutions:
+  device_name: "persiana-marc-nord"
+  device_id: "persiana_marc_nord"
+  friendly_name: "Persiana Marc Nord"
+  topic_prefix: "persiana_marc_nord"
+  static_ip: "10.0.20.25"
+  # On this PCB the ADE7953 channels are crossed relative to the relays:
+  # channel A (current_channel_2) measures the GPIO13 relay (open),
+  # channel B (current_channel_1) measures the GPIO12 relay (close).
+  output_name_1: "Close"
+  output_name_2: "Open"
+  # current_based cover needs fresh current readings to detect the motor
+  power_update_interval: "0.5s"
 
-  shutter-prelude: !include
-    file: ../packages/shutter/shutter-prelude.yaml
+packages:
+  # Hardware configuration
+  hardware: !include
+    file: ../hardware/shelly-plus-2.yaml
     vars:
-      device_name: "persiana-marc-nord"
-      friendly_name: "persiana-marc-nord"
-      topic_prefix: "persiana_marc_nord"
-      static_ip: 10.0.20.25
+      device_name: ${device_name}
+      friendly_name: ${friendly_name}
+
+  halt-automations: !include ../packages/halt-automations.yaml
+
+  # Common functionality
+  wifi: !include
+    file: ../common/wifi.yaml
+    vars:
+      static_ip: ${static_ip}
+
+  mqtt: !include ../common/mqtt.yaml
+  logger: !include ../common/logger.yaml
+  web-server: !include ../common/web-server.yaml
+  reset: !include ../common/reset.yaml
+
+globals:
+  - id: sw1_state
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0: open next, 1: stop next, 2: close next, 3: stop next
+
+# Device-specific input logic (single momentary button, SW1 only:
+# cycles open -> stop -> close -> stop on each press)
+binary_sensor:
+  - platform: gpio
+    name: "SW1"
+    id: sw1
+    pin: GPIO5
+    filters:
+      - delayed_on_off: 100ms
+    on_press:
+      then:
+        - lambda: |-
+            auto call = id(blind).make_call();
+            switch (id(sw1_state)) {
+              case 0: call.set_command_open(); break;
+              case 2: call.set_command_close(); break;
+              default: call.set_command_stop(); break;
+            }
+            call.perform();
+            id(sw1_state) = (id(sw1_state) + 1) % 4;
+
+# Physical relay outputs
+switch:
+  - platform: gpio
+    id: relay_1
+    name: "${friendly_name} Open Relay"
+    pin: GPIO13
+    restore_mode: ALWAYS_OFF
+    interlock: &interlock [relay_1, relay_2]
+    interlock_wait_time: 150ms
+
+  - platform: gpio
+    id: relay_2
+    name: "${friendly_name} Close Relay"
+    pin: GPIO12
+    restore_mode: ALWAYS_OFF
+    interlock: *interlock
+    interlock_wait_time: 150ms
+
+# Blind control logic - device-specific behavior
+cover:
+  - platform: current_based
+    name: "Blind"
+    id: blind
+
+    # Use current sensors from hardware package (channel A ↔ GPIO13 relay)
+    open_sensor: current_channel_2
+    # Motor draws ~0.73A while moving; threshold must sit below that
+    open_moving_current_threshold: 0.4
+    open_duration: 12s
+    open_action:
+      - switch.turn_on: relay_1
+
+    close_sensor: current_channel_1
+    close_moving_current_threshold: 0.4
+    close_duration: 10s
+    close_action:
+      - switch.turn_on: relay_2
+
+    stop_action:
+      - switch.turn_off: relay_1
+      - switch.turn_off: relay_2
+
+    # Device-specific behavior parameters
+    obstacle_rollback: 30%
+    start_sensing_delay: 0.8s
+    malfunction_detection: true
+    malfunction_action:
+      then:
+        - logger.log: "Malfunction detected. Relay welded."
