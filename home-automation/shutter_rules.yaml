@@ -1,0 +1,50 @@
+# Shutter Automation Rules
+#
+# This file is managed by the Hermes Agent.
+# Add new rules by giving instructions to the agent, e.g.,
+# "From now on, open the kitchen shutter 15 minutes after sunrise."
+
+summer:
+  - name: "Group 1: Living Room & Pool Area"
+    entities:
+      - persiana-menjador
+      - persiana-marc-piscina
+    open:
+      trigger: solar_zenith
+    close:
+      trigger: sunset
+
+  - name: "Group 2: Kitchen Sink"
+    entities:
+      - persiana-cuina-pica
+    open:
+      trigger: solar_zenith
+      offset: -60
+    close:
+      trigger: sunrise
+      offset: 30
+
+  - name: "Group 3: South-Facing Zones (Heat Protection)"
+    entities:
+      - persiana-cuina-sud
+      - persiana-habitacio-sud
+    open:
+      trigger: time
+      time: '17:00'
+    close:
+      trigger: time
+      time: '10:00'
+
+  - name: "Group 4: Bathroom & Rabbits Area"
+    entities:
+      - persiana-bany
+      - persiana-conills
+    open:
+      trigger: sunset
+    close:
+      trigger: solar_zenith
+      offset: 60
+
+autumn: []
+winter: []
+spring: []
