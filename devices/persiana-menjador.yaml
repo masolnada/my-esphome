@@ -83,18 +83,20 @@ cover:
     id: blind
 
     # Use current sensors from hardware package
-    open_sensor: open_current
-    # Motor draws ~1A while moving; threshold must sit below that
+    # NOTE: relays and current sensors are swapped on this device —
+    # relay_a/channel_a physically drives the close (down) direction,
+    # relay_b/channel_b physically drives the open (up) direction.
+    open_sensor: close_current
     open_moving_current_threshold: 0.5
     open_duration: 12s
     open_action:
-      - switch.turn_on: relay_a  # Hardware package relay ID
+      - switch.turn_on: relay_b
 
-    close_sensor: close_current
+    close_sensor: open_current
     close_moving_current_threshold: 0.5
     close_duration: 10s
     close_action:
-      - switch.turn_on: relay_b  # Hardware package relay ID
+      - switch.turn_on: relay_a
 
     stop_action:
       - switch.turn_off: relay_a  # Hardware package relay ID
