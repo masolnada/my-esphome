@@ -24,11 +24,11 @@ def run_command(command):
         result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
         return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"Error executing command: {command}\\n--- STDERR ---\\n{e.stderr.strip()}")
+        print(f"Error executing command: {command}\n--- STDERR ---\n{e.stderr.strip()}")
         return None
 
 def get_season(d):
-    """Determines the season in the Northern Hemisphere for a given date."""
+    """Determines the season in the Northern hemisphere for a given date."""
     if 3 <= d.month <= 5: return "spring"
     if 6 <= d.month <= 8: return "summer"
     if 9 <= d.month <= 11: return "autumn"
@@ -37,7 +37,7 @@ def get_season(d):
 def cleanup_old_jobs_and_scripts():
     """Removes cron jobs and scripts created by previous runs."""
     print("--- Cleaning up old jobs and scripts ---")
-    
+
     list_command = f"{HERMES_EXEC} cron list"
     result = run_command(list_command)
     if not result:
@@ -46,21 +46,15 @@ def cleanup_old_jobs_and_scripts():
 
     job_ids_to_remove = []
     scripts_to_remove = set()
-    # The CLI outputs multi-line blocks per job, e.g.:
-    #   9c82f26d12d3 [active]
-    #     Name:      AUTOSHUTTER-ONESHOT_2129_close_persiana_menjador
-    #     ...
-    # We match job IDs and AUTOSHUTTER names separately, then pair them by proximity.
     job_id_re = re.compile(r"([0-9a-f]{12})\s+\[")
     name_re = re.compile(r"Name:\s+(" + re.escape(SCHEDULE_TAG) + r"_\S+)")
-    
+
     lines = result.splitlines()
     for i, line in enumerate(lines):
         name_match = name_re.search(line)
         if not name_match:
             continue
         job_name = name_match.group(1)
-        # Search backwards from the name line to find the job ID
         job_id = None
         for j in range(i, max(i - 5, -1), -1):
             id_match = job_id_re.search(lines[j])
@@ -72,7 +66,8 @@ def cleanup_old_jobs_and_scripts():
             continue
         job_ids_to_remove.append(job_id)
         # Infer script name from job name
-        # Example: AUTOSHUTTER-ONESHOT_0641_open_all -> autoshutter_0641_open_all.sh
+        # Old format: AUTOSHUTTER-ONESHOT_2129_close_persiana_menjador -> autoshutter_2129_close_persiana_menjador.sh
+        # New format: AUTOSHUTTER-ONESHOT_2129 -> autoshutter_2129.sh
         script_base = job_name.replace(SCHEDULE_TAG + '_', 'autoshutter_')
         script_name = script_base + ".sh"
         scripts_to_remove.add(script_name)
@@ -94,9 +89,9 @@ def cleanup_old_jobs_and_scripts():
     print(f"Removed {len(job_ids_to_remove)} old job(s). Cleanup complete.")
 
 def schedule_new_jobs():
-    """Calculates and schedules the new jobs for the day."""
-    print("\\n--- Calculating and scheduling new jobs ---")
-    
+    """Calculates and schedules the new jobs for the day, grouped by time slot."""
+    print("\n--- Calculating and scheduling new jobs ---")
+
     try:
         with open(RULES_FILE, 'r') as f:
             rules = yaml.safe_load(f)
@@ -107,13 +102,12 @@ def schedule_new_jobs():
     loc = LocationInfo(LOCATION_NAME, LOCATION_REGION, "UTC", LOCATION_LAT, LOCATION_LON)
     today = datetime.now(timezone.utc).date()
     solar_times_utc = sun.sun(loc.observer, date=today, tzinfo=timezone.utc)
-    # Use a local timezone-aware object for calculations
     local_tz = datetime.now().astimezone().tzinfo
     solar_times_local = {key: value.astimezone(local_tz) for key, value in solar_times_utc.items()}
-    
+
     print(f"Today's solar times for {LOCATION_NAME} (local time):")
     for event, time in solar_times_local.items():
-        if event in ['sunrise', 'sunset', 'noon']: # 'noon' is solar zenith
+        if event in ['sunrise', 'sunset', 'noon']:
             print(f"  {event.capitalize()}: {time.strftime('%H:%M:%S')}")
 
     season = get_season(today)
@@ -124,94 +118,86 @@ def schedule_new_jobs():
         print(f"No rules found for season '{season}'. No jobs to schedule.")
         return
 
-    # Flatten the rule structure into a simple list of actions
-    actions_to_schedule = []
+    # Flatten rules into a list of (schedule_time, device, action) tuples
+    raw_actions = []
     print("Processing rules...")
     for group in season_rules:
         entities = group.get("entities", [])
         if not entities:
             print(f"Skipping rule group '{group.get('name')}' because it has no entities.")
             continue
-        
+
         for action_type in ["open", "close"]:
             if action_type in group:
                 action_rule = group[action_type]
                 trigger_type = action_rule.get("trigger")
-                
+
                 if trigger_type == "time":
                     time_str = action_rule.get("time")
                     if not time_str:
                         print(f"Skipping time-based action in '{group.get('name')}' due to missing 'time'.")
                         continue
-                    actions_to_schedule.append({
-                        "is_time_based": True,
-                        "time_str": time_str,
-                        "action": action_type,
-                        "devices": entities
-                    })
+                    try:
+                        hour, minute = map(int, time_str.split(':'))
+                        now = datetime.now(local_tz)
+                        schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    except (ValueError, TypeError) as e:
+                        print(f"Skipping rule due to invalid time format '{time_str}': {e}")
+                        continue
                 elif trigger_type:
-                    # Map solar_zenith from YAML to 'noon' from astral library
                     event_name = 'noon' if trigger_type == 'solar_zenith' else trigger_type
                     offset = action_rule.get("offset", 0)
-                    actions_to_schedule.append({
-                        "is_time_based": False,
-                        "event": event_name,
-                        "offset_minutes": offset,
-                        "action": action_type,
-                        "devices": entities
-                    })
+                    base_time = solar_times_local.get(event_name)
+                    if not base_time:
+                        print(f"Skipping rule due to unknown solar event: {event_name}")
+                        continue
+                    schedule_time = base_time + timedelta(minutes=offset)
+                else:
+                    continue
 
-    if not actions_to_schedule:
+                device_list = ["all"] if "all" in entities else entities
+                for device in device_list:
+                    raw_actions.append((schedule_time, device, action_type))
+
+    if not raw_actions:
         print("Rule processing resulted in no actions to schedule.")
         return
-        
+
+    # Group actions by time slot (same minute)
+    time_slots = {}
+    for schedule_time, device, action in raw_actions:
+        time_key = schedule_time.strftime("%H%M")
+        if time_key not in time_slots:
+            time_slots[time_key] = {"schedule_time": schedule_time, "pairs": []}
+        time_slots[time_key]["pairs"].append(f"{device}:{action}")
+
+    # Create one script and one cron job per time slot
     jobs_scheduled = 0
-    for rule in actions_to_schedule:
-        action, devices = rule["action"], rule["devices"]
-        
-        if rule.get("is_time_based"):
-            try:
-                hour, minute = map(int, rule["time_str"].split(':'))
-                now = datetime.now(local_tz)
-                schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            except (ValueError, TypeError) as e:
-                print(f"Skipping rule due to invalid time format '{rule.get('time_str')}': {e}")
-                continue
-        else:
-            event_name = rule["event"]
-            offset = rule["offset_minutes"]
-            base_time = solar_times_local.get(event_name)
-            if not base_time:
-                print(f"Skipping rule due to unknown solar event: {event_name}")
-                continue
-            schedule_time = base_time + timedelta(minutes=offset)
-
+    for time_key, slot in sorted(time_slots.items()):
+        schedule_time = slot["schedule_time"]
         schedule_time_iso = schedule_time.isoformat()
-        device_list = ["all"] if "all" in devices else devices
-        
-        for device in device_list:
-            time_str = schedule_time.strftime("%H%M")
-            sanitized_device = device.replace('-', '_')
-            job_name = f"{SCHEDULE_TAG}_{time_str}_{action.lower()}_{sanitized_device}"
-            script_name = f"autoshutter_{time_str}_{action.lower()}_{sanitized_device}.sh"
-            script_path = os.path.join(SCRIPTS_DIR, script_name)
-            
-            command_to_run = f"/opt/data/home-automation/venv/bin/python {SHUTTER_SCRIPT_PATH} control {device} '{action}'"
-            script_content = f"#!/bin/bash\n# One-shot for {job_name}\n{command_to_run}\n"
-            
-            try:
-                with open(script_path, 'w') as f: f.write(script_content)
-                os.chmod(script_path, 0o755)
-            except OSError as e:
-                print(f"FATAL: Could not write script {script_path}: {e}")
-                continue
+        pairs_str = " ".join(slot["pairs"])
+        job_name = f"{SCHEDULE_TAG}_{time_key}"
+        script_name = f"autoshutter_{time_key}.sh"
+        script_path = os.path.join(SCRIPTS_DIR, script_name)
 
-            print(f"Scheduling job '{job_name}' at {schedule_time.strftime('%Y-%m-%d %H:%M:%S')}")
-            create_cmd = f"{HERMES_EXEC} cron create '{schedule_time_iso}' --name '{job_name}' --script '{script_name}' --no-agent --repeat 1"
-            run_command(create_cmd)
-            jobs_scheduled += 1
+        command_to_run = f"/opt/data/home-automation/venv/bin/python {SHUTTER_SCRIPT_PATH} control-multi {pairs_str}"
+        script_content = f"#!/bin/bash\n# One-shot for {job_name}\n{command_to_run}\n"
 
-    print(f"Successfully scheduled {jobs_scheduled} new job(s).")
+        try:
+            with open(script_path, 'w') as f:
+                f.write(script_content)
+            os.chmod(script_path, 0o755)
+        except OSError as e:
+            print(f"FATAL: Could not write script {script_path}: {e}")
+            continue
+
+        print(f"Scheduling job '{job_name}' at {schedule_time.strftime('%Y-%m-%d %H:%M:%S')} for {len(slot['pairs'])} shutter(s): {pairs_str}")
+        create_cmd = f"{HERMES_EXEC} cron create '{schedule_time_iso}' --name '{job_name}' --script '{script_name}' --no-agent --repeat 1"
+        run_command(create_cmd)
+        jobs_scheduled += 1
+
+    print(f"Successfully scheduled {jobs_scheduled} new job(s) across {len(time_slots)} time slot(s).")
 
 
 def main():
