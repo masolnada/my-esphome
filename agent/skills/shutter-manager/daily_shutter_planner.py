@@ -79,7 +79,8 @@ def cleanup_old_jobs_and_scripts():
 
     if job_ids_to_remove:
         print(f"Removing old jobs: {', '.join(job_ids_to_remove)}")
-        run_command(f"{HERMES_EXEC} cron rm {' '.join(job_ids_to_remove)}")
+        for jid in job_ids_to_remove:
+            run_command(f"{HERMES_EXEC} cron rm {jid}")
 
     for script_name in scripts_to_remove:
         script_path = os.path.join(SCRIPTS_DIR, script_name)
@@ -196,7 +197,7 @@ def schedule_new_jobs():
             script_path = os.path.join(SCRIPTS_DIR, script_name)
             
             command_to_run = f"/opt/data/home-automation/venv/bin/python {SHUTTER_SCRIPT_PATH} control {device} '{action}'"
-            script_content = f"#!/bin/bash\\n# One-shot for {job_name}\\n{command_to_run}\\n"
+            script_content = f"#!/bin/bash\n# One-shot for {job_name}\n{command_to_run}\n"
             
             try:
                 with open(script_path, 'w') as f: f.write(script_content)
