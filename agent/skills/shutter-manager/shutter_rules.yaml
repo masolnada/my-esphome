@@ -33,7 +33,15 @@ summer:
       time: '17:00'
     close:
       trigger: time
-      time: '09:30'
+      time: '10:00'
+
+  - name: "Group 3b: South-Facing Zones (Evening Close)"
+    entities:
+      - persiana-cuina-sud
+      - persiana-habitacio-sud
+    close:
+      trigger: sunset
+      offset: -30
 
   - name: "Group 4: Bathroom & Rabbits Area"
     entities:
