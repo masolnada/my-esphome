@@ -194,8 +194,11 @@ def schedule_new_jobs():
 
         print(f"Scheduling job '{job_name}' at {schedule_time.strftime('%Y-%m-%d %H:%M:%S')} for {len(slot['pairs'])} shutter(s): {pairs_str}")
         create_cmd = f"{HERMES_EXEC} cron create '{schedule_time_iso}' --name '{job_name}' --script '{script_name}' --no-agent --repeat 1"
-        run_command(create_cmd)
-        jobs_scheduled += 1
+        create_result = run_command(create_cmd)
+        if create_result is None:
+            print(f"ERROR: Failed to create cron job '{job_name}' — hermes cron create returned an error. STDERR above.")
+        else:
+            jobs_scheduled += 1
 
     print(f"Successfully scheduled {jobs_scheduled} new job(s) across {len(time_slots)} time slot(s).")
 
