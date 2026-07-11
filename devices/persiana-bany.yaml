@@ -83,18 +83,18 @@ cover:
     id: blind
 
     # Use current sensors from hardware package
-    open_sensor: open_current
+    open_sensor: close_current
     # Motor draws ~1A while moving (big shutter); threshold must sit below that
     open_moving_current_threshold: 0.5
     open_duration: 12s
     open_action:
-      - switch.turn_on: relay_a  # Hardware package relay ID
+      - switch.turn_on: relay_b  # Hardware package relay ID
 
-    close_sensor: close_current
+    close_sensor: open_current
     close_moving_current_threshold: 0.5
     close_duration: 10s
     close_action:
-      - switch.turn_on: relay_b  # Hardware package relay ID
+      - switch.turn_on: relay_a  # Hardware package relay ID
 
     stop_action:
       - switch.turn_off: relay_a  # Hardware package relay ID
