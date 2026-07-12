@@ -1,11 +1,24 @@
 #!/opt/data/home-automation/venv/bin/python
+"""
+Daily Shutter Scheduler
+
+Runs at 01:30 every day. Reads shutter_rules.yaml, calculates solar times,
+and creates one-shot cron jobs for each time slot — writing directly to
+jobs.json so past-time jobs are not rejected by the 120s grace window.
+
+The scheduler will fire past-time one-shots on the next tick (catchup),
+but since the planner runs at 01:30 (before sunrise), all solar-based
+times will be in the future.
+"""
 import yaml
-import subprocess
+import json
 import re
+import uuid
+import os
+import fcntl
 from datetime import datetime, timedelta, timezone
 from astral.location import LocationInfo
 from astral import sun
-import os
 
 # --- Configuration ---
 HERMES_EXEC = "/opt/hermes/bin/hermes"
@@ -16,16 +29,31 @@ LOCATION_LON = 1.6786
 RULES_FILE = "/opt/data/home-automation/shutter_rules.yaml"
 SHUTTER_SCRIPT_PATH = "/opt/data/skills/home-automation/home-shutters/scripts/shutters.py"
 SCHEDULE_TAG = "AUTOSHUTTER-ONESHOT"
-SCRIPTS_DIR = os.path.join(os.environ.get("HERMES_HOME", os.path.expanduser("~")), "scripts")
+HERMES_HOME = os.environ.get("HERMES_HOME", os.path.expanduser("~"))
+SCRIPTS_DIR = os.path.join(HERMES_HOME, "scripts")
+JOBS_FILE = "/opt/data/cron/jobs.json"
+LOCK_FILE = "/opt/data/cron/jobs.json.lock"
 
-def run_command(command):
-    """Executes a shell command and returns its output."""
+
+def acquire_lock():
+    """Acquire an exclusive file lock on jobs.json to prevent concurrent writes."""
+    os.makedirs(os.path.dirname(LOCK_FILE), exist_ok=True)
+    lock_fd = open(LOCK_FILE, "w")
     try:
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing command: {command}\n--- STDERR ---\n{e.stderr.strip()}")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        return lock_fd
+    except (IOError, OSError) as e:
+        print(f"FATAL: Could not acquire lock on {LOCK_FILE}: {e}")
+        lock_fd.close()
         return None
+
+
+def release_lock(lock_fd):
+    """Release the file lock."""
+    if lock_fd:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+
 
 def get_season(d):
     """Determines the season in the Northern hemisphere for a given date."""
@@ -34,49 +62,48 @@ def get_season(d):
     if 9 <= d.month <= 11: return "autumn"
     return "winter"
 
-def cleanup_old_jobs_and_scripts():
-    """Removes cron jobs and scripts created by previous runs."""
+
+def load_jobs():
+    """Load the current jobs.json, returning (dict, raw_jobs_list)."""
+    try:
+        with open(JOBS_FILE, "r") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"ERROR: Could not read {JOBS_FILE}: {e}")
+        return None, None
+    raw_jobs = data.get("jobs", [])
+    return data, raw_jobs
+
+
+def save_jobs(data):
+    """Write jobs.json back to disk."""
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    tmp_path = JOBS_FILE + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+    os.replace(tmp_path, JOBS_FILE)
+
+
+def cleanup_old_jobs_and_scripts(raw_jobs):
+    """Removes AUTOSHUTTER jobs from raw_jobs list and deletes their scripts."""
     print("--- Cleaning up old jobs and scripts ---")
 
-    list_command = f"{HERMES_EXEC} cron list"
-    result = run_command(list_command)
-    if not result:
-        print("Could not query cron list or it's empty.")
-        return
-
-    job_ids_to_remove = []
+    kept_jobs = []
+    removed_count = 0
     scripts_to_remove = set()
-    job_id_re = re.compile(r"([0-9a-f]{12})\s+\[")
-    name_re = re.compile(r"Name:\s+(" + re.escape(SCHEDULE_TAG) + r"_\S+)")
 
-    lines = result.splitlines()
-    for i, line in enumerate(lines):
-        name_match = name_re.search(line)
-        if not name_match:
-            continue
-        job_name = name_match.group(1)
-        job_id = None
-        for j in range(i, max(i - 5, -1), -1):
-            id_match = job_id_re.search(lines[j])
-            if id_match:
-                job_id = id_match.group(1)
-                break
-        if not job_id:
-            print(f"Could not find job ID for '{job_name}', skipping.")
-            continue
-        job_ids_to_remove.append(job_id)
-        # Infer script name from job name
-        # Old format: AUTOSHUTTER-ONESHOT_2129_close_persiana_menjador -> autoshutter_2129_close_persiana_menjador.sh
-        # New format: AUTOSHUTTER-ONESHOT_2129 -> autoshutter_2129.sh
-        script_base = job_name.replace(SCHEDULE_TAG + '_', 'autoshutter_')
-        script_name = script_base + ".sh"
-        scripts_to_remove.add(script_name)
+    for job in raw_jobs:
+        if isinstance(job, dict):
+            name = job.get("name", "")
+            if name.startswith(SCHEDULE_TAG):
+                removed_count += 1
+                script = job.get("script")
+                if script:
+                    scripts_to_remove.add(script)
+                continue
+        kept_jobs.append(job)
 
-    if job_ids_to_remove:
-        print(f"Removing old jobs: {', '.join(job_ids_to_remove)}")
-        for jid in job_ids_to_remove:
-            run_command(f"{HERMES_EXEC} cron rm {jid}")
-
+    # Remove old script files
     for script_name in scripts_to_remove:
         script_path = os.path.join(SCRIPTS_DIR, script_name)
         if os.path.exists(script_path):
@@ -86,18 +113,20 @@ def cleanup_old_jobs_and_scripts():
             except OSError as e:
                 print(f"Error removing script {script_path}: {e}")
 
-    print(f"Removed {len(job_ids_to_remove)} old job(s). Cleanup complete.")
+    print(f"Removed {removed_count} old AUTOSHUTTER job(s). Cleanup complete.")
+    return kept_jobs
 
-def schedule_new_jobs():
-    """Calculates and schedules the new jobs for the day, grouped by time slot."""
+
+def schedule_new_jobs(raw_jobs):
+    """Calculates solar times, builds action list, creates scripts and inserts jobs directly into jobs.json."""
     print("\n--- Calculating and scheduling new jobs ---")
 
     try:
-        with open(RULES_FILE, 'r') as f:
+        with open(RULES_FILE, "r") as f:
             rules = yaml.safe_load(f)
     except Exception as e:
         print(f"FATAL: Could not read or parse rules file {RULES_FILE}: {e}")
-        return
+        return raw_jobs
 
     loc = LocationInfo(LOCATION_NAME, LOCATION_REGION, "UTC", LOCATION_LAT, LOCATION_LON)
     today = datetime.now(timezone.utc).date()
@@ -107,7 +136,7 @@ def schedule_new_jobs():
 
     print(f"Today's solar times for {LOCATION_NAME} (local time):")
     for event, time in solar_times_local.items():
-        if event in ['sunrise', 'sunset', 'noon']:
+        if event in ["sunrise", "sunset", "noon"]:
             print(f"  {event.capitalize()}: {time.strftime('%H:%M:%S')}")
 
     season = get_season(today)
@@ -116,7 +145,7 @@ def schedule_new_jobs():
     season_rules = rules.get(season)
     if not season_rules:
         print(f"No rules found for season '{season}'. No jobs to schedule.")
-        return
+        return raw_jobs
 
     # Flatten rules into a list of (schedule_time, device, action) tuples
     raw_actions = []
@@ -138,14 +167,14 @@ def schedule_new_jobs():
                         print(f"Skipping time-based action in '{group.get('name')}' due to missing 'time'.")
                         continue
                     try:
-                        hour, minute = map(int, time_str.split(':'))
+                        hour, minute = map(int, time_str.split(":"))
                         now = datetime.now(local_tz)
                         schedule_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
                     except (ValueError, TypeError) as e:
                         print(f"Skipping rule due to invalid time format '{time_str}': {e}")
                         continue
                 elif trigger_type:
-                    event_name = 'noon' if trigger_type == 'solar_zenith' else trigger_type
+                    event_name = "noon" if trigger_type == "solar_zenith" else trigger_type
                     offset = action_rule.get("offset", 0)
                     base_time = solar_times_local.get(event_name)
                     if not base_time:
@@ -161,7 +190,7 @@ def schedule_new_jobs():
 
     if not raw_actions:
         print("Rule processing resulted in no actions to schedule.")
-        return
+        return raw_jobs
 
     # Group actions by time slot (same minute)
     time_slots = {}
@@ -172,7 +201,7 @@ def schedule_new_jobs():
         time_slots[time_key]["pairs"].append(f"{device}:{action}")
 
     # Create one script and one cron job per time slot
-    jobs_scheduled = 0
+    new_jobs = []
     for time_key, slot in sorted(time_slots.items()):
         schedule_time = slot["schedule_time"]
         schedule_time_iso = schedule_time.isoformat()
@@ -185,7 +214,7 @@ def schedule_new_jobs():
         script_content = f"#!/bin/bash\n# One-shot for {job_name}\n{command_to_run}\n"
 
         try:
-            with open(script_path, 'w') as f:
+            with open(script_path, "w") as f:
                 f.write(script_content)
             os.chmod(script_path, 0o755)
         except OSError as e:
@@ -193,22 +222,83 @@ def schedule_new_jobs():
             continue
 
         print(f"Scheduling job '{job_name}' at {schedule_time.strftime('%Y-%m-%d %H:%M:%S')} for {len(slot['pairs'])} shutter(s): {pairs_str}")
-        create_cmd = f"{HERMES_EXEC} cron create '{schedule_time_iso}' --name '{job_name}' --script '{script_name}' --no-agent --repeat 1"
-        create_result = run_command(create_cmd)
-        if create_result is None:
-            print(f"ERROR: Failed to create cron job '{job_name}' — hermes cron create returned an error. STDERR above.")
-        else:
-            jobs_scheduled += 1
 
-    print(f"Successfully scheduled {jobs_scheduled} new job(s) across {len(time_slots)} time slot(s).")
+        # Build job dict in the same format as hermes cron create
+        job_id = uuid.uuid4().hex[:12]
+        job = {
+            "id": job_id,
+            "name": job_name,
+            "prompt": "",
+            "skills": [],
+            "skill": None,
+            "model": None,
+            "provider": None,
+            "provider_snapshot": None,
+            "model_snapshot": None,
+            "base_url": None,
+            "script": script_name,
+            "no_agent": True,
+            "context_from": None,
+            "schedule": {
+                "kind": "oneshot",
+                "run_at": schedule_time_iso,
+            },
+            "schedule_display": f"once at {schedule_time.strftime('%Y-%m-%d %H:%M')}",
+            "repeat": {"times": 1, "completed": 0},
+            "enabled": True,
+            "state": "scheduled",
+            "paused_at": None,
+            "paused_reason": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "next_run_at": schedule_time_iso,
+            "last_run_at": None,
+            "last_status": None,
+            "last_error": None,
+            "last_delivery_error": None,
+            "deliver": "local",
+            "origin": None,
+            "enabled_toolsets": None,
+            "workdir": None,
+            "fire_claim": None,
+        }
+        new_jobs.append(job)
+
+    print(f"Created {len(new_jobs)} job(s) across {len(time_slots)} time slot(s).")
+    return raw_jobs + new_jobs
 
 
 def main():
-    print(f"--- Dynamic Shutter Scheduler ---")
+    print("--- Dynamic Shutter Scheduler ---")
     print(f"Run started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    cleanup_old_jobs_and_scripts()
-    schedule_new_jobs()
+
+    # Acquire lock to prevent concurrent jobs.json access
+    lock_fd = acquire_lock()
+    if not lock_fd:
+        print("FATAL: Could not acquire lock. Aborting.")
+        return
+
+    try:
+        # Load current jobs
+        data, raw_jobs = load_jobs()
+        if data is None:
+            print("FATAL: Could not load jobs.json. Aborting.")
+            return
+
+        # Clean up old AUTOSHUTTER jobs
+        kept_jobs = cleanup_old_jobs_and_scripts(raw_jobs)
+
+        # Schedule new jobs (returns kept_jobs + new_jobs)
+        all_jobs = schedule_new_jobs(kept_jobs)
+
+        # Save back to jobs.json
+        data["jobs"] = all_jobs
+        save_jobs(data)
+        print(f"\nWrote {len(all_jobs)} total jobs to {JOBS_FILE}")
+    finally:
+        release_lock(lock_fd)
+
     print("Run finished.")
+
 
 if __name__ == "__main__":
     main()
