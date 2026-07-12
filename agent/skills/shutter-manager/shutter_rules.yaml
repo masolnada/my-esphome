@@ -43,6 +43,13 @@ summer:
       trigger: sunset
       offset: -30
 
+  - name: "Group 3c: South-Facing Kitchen (Morning Open)"
+    entities:
+      - persiana-cuina-sud
+    open:
+      trigger: sunrise
+      offset: -30
+
   - name: "Group 4: Bathroom & Rabbits Area"
     entities:
       - persiana-bany
