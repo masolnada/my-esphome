@@ -4,17 +4,20 @@ Daily Shutter Scheduler
 
 Runs at 01:30 every day. Reads shutter_rules.yaml, calculates solar times,
 and creates one-shot cron jobs for each time slot — writing directly to
-jobs.json so past-time jobs are not rejected by the 120s grace window.
+jobs.json so legitimate jobs are not rejected by the 120s grace window.
 
-The scheduler will fire past-time one-shots on the next tick (catchup),
-but since the planner runs at 01:30 (before sunrise), all solar-based
-times will be in the future.
+Because the scheduler fires past-time one-shots on its next tick (catchup),
+the planner must NEVER emit a job in the past: the solar date is computed
+in local time (in the 00:00–01:59 CEST window the UTC date is still
+yesterday, which on 2026-07-13 scheduled every solar job in the past and
+fired them all at 01:31), and any slot already elapsed is skipped.
 """
 import yaml
 import json
 import re
 import uuid
 import os
+import glob
 import fcntl
 from datetime import datetime, timedelta, timezone
 from astral.location import LocationInfo
@@ -90,28 +93,24 @@ def cleanup_old_jobs_and_scripts(raw_jobs):
 
     kept_jobs = []
     removed_count = 0
-    scripts_to_remove = set()
 
     for job in raw_jobs:
         if isinstance(job, dict):
             name = job.get("name", "")
             if name.startswith(SCHEDULE_TAG):
                 removed_count += 1
-                script = job.get("script")
-                if script:
-                    scripts_to_remove.add(script)
                 continue
         kept_jobs.append(job)
 
-    # Remove old script files
-    for script_name in scripts_to_remove:
-        script_path = os.path.join(SCRIPTS_DIR, script_name)
-        if os.path.exists(script_path):
-            try:
-                os.remove(script_path)
-                print(f"Removed old script: {script_path}")
-            except OSError as e:
-                print(f"Error removing script {script_path}: {e}")
+    # Remove ALL autoshutter scripts by glob, not just those referenced from
+    # jobs.json: completed/rejected one-shots leave jobs.json before cleanup
+    # sees them, so their scripts used to accumulate forever.
+    for script_path in glob.glob(os.path.join(SCRIPTS_DIR, "autoshutter_*.sh")):
+        try:
+            os.remove(script_path)
+            print(f"Removed old script: {script_path}")
+        except OSError as e:
+            print(f"Error removing script {script_path}: {e}")
 
     print(f"Removed {removed_count} old AUTOSHUTTER job(s). Cleanup complete.")
     return kept_jobs
@@ -129,9 +128,12 @@ def schedule_new_jobs(raw_jobs):
         return raw_jobs
 
     loc = LocationInfo(LOCATION_NAME, LOCATION_REGION, "UTC", LOCATION_LAT, LOCATION_LON)
-    today = datetime.now(timezone.utc).date()
-    solar_times_utc = sun.sun(loc.observer, date=today, tzinfo=timezone.utc)
     local_tz = datetime.now().astimezone().tzinfo
+    # "Today" must be the LOCAL date: at 01:30 CEST the UTC date is still
+    # yesterday, which would compute yesterday's solar times and schedule
+    # every solar job in the past.
+    today = datetime.now(local_tz).date()
+    solar_times_utc = sun.sun(loc.observer, date=today, tzinfo=timezone.utc)
     solar_times_local = {key: value.astimezone(local_tz) for key, value in solar_times_utc.items()}
 
     print(f"Today's solar times for {LOCATION_NAME} (local time):")
@@ -202,8 +204,15 @@ def schedule_new_jobs(raw_jobs):
 
     # Create one script and one cron job per time slot
     new_jobs = []
+    now = datetime.now(local_tz)
     for time_key, slot in sorted(time_slots.items()):
         schedule_time = slot["schedule_time"]
+        # Never emit a past job: the scheduler runs past-time one-shots
+        # immediately on its next tick (catchup), moving shutters at the
+        # wrong moment. Elapsed slots are lost for the day by design.
+        if schedule_time <= now:
+            print(f"Skipping past time slot {time_key} ({schedule_time.strftime('%Y-%m-%d %H:%M:%S')}): already elapsed")
+            continue
         schedule_time_iso = schedule_time.isoformat()
         pairs_str = " ".join(slot["pairs"])
         job_name = f"{SCHEDULE_TAG}_{time_key}"
