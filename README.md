@@ -54,7 +54,7 @@ All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Ev
 | **llum-ambient-dormitori** | Shelly RGBW2 | 💡 Light | DHCP | `llum-ambient-dormitori.local` | none custom (standard light entity) |
 | **llum-escala** | Shelly Plus 1 | 💡 Light | DHCP | `llum-escala.local` | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently below horizon (nighttime); no-op during the day |
 | **llum-ventilador-marc** | Shelly Plus 2 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marc.local` | none custom (standard switch entities `Output 1`/`Output 2`) |
-| **llum-ventilador-marcscave** | Shelly Plus 2 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marcscave.local` | none custom (standard switch entities `Output 1`/`Output 2`) |
+| **llum-ventilador-marcscave** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marcscave.local` | none custom (standard switch entities `Relay A`/`Relay B`) |
 | **llum-ventilador-menjador** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-menjador.local` | none custom (standard switch entities) |
 
 ### 🪟 Shutters

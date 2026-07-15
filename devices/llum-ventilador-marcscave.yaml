@@ -1,83 +1,79 @@
 substitutions:
   device_name: "llum-ventilador-marcscave"
-  friendly_name: "llum-ventilador-marcscave"
-  output_name_1: "Output 1"
-  output_name_2: "Output 2"
-  input_name_1: "Input 1"
-  input_name_2: "Input 2"
+  device_id: "llum_ventilador_marcscave"
+  friendly_name: "Llum Ventilador Marcscave"
+  topic_prefix: "llum_ventilador_marcscave"
 
 packages:
 
-  shelly-plus-2: !include ../hardware/shelly-plus-2.yaml
-  debug: !include ../common/debug.yaml
-  reset: !include ../common/reset.yaml
-  time: !include ../common/time.yaml
-  web-server: !include ../common/web-server.yaml
-  mqtt: !include ../common/mqtt.yaml
-
+  shelly-25: !include ../hardware/shelly-25.yaml
   wifi: !include
     file: ../common/wifi.yaml
     vars:
       device_name: ${device_name}
 
-output:
-  - platform: gpio
-    id: "relay_output_1"
-    pin: GPIO12
-  - platform: gpio
-    id: "relay_output_2"
-    pin: GPIO13
+  mqtt: !include
+    file: ../common/mqtt.yaml
+    vars:
+      device_name: ${device_name}
 
+  logger: !include ../common/logger.yaml
+  web-server: !include ../common/web-server.yaml
+  reset: !include ../common/reset.yaml
+  time: !include ../common/time.yaml
+
+# The hardware package interlocks the relays for shutter use; light and fan
+# must be allowed on together.
 switch:
-  - platform: output
-    id: "relay_1"
-    name: "${output_name_1}"
-    output: "relay_output_1"
-  - platform: output
-    id: "relay_2"
-    name: "${output_name_2}"
-    output: "relay_output_2"
+  - id: !extend relay_a
+    interlock: !remove
+    interlock_wait_time: !remove
+  - id: !extend relay_b
+    interlock: !remove
+    interlock_wait_time: !remove
 
 binary_sensor:
 
-  # Input 1
-  - platform: gpio
-    name: "${input_name_1}"
-    id: "input_1"
-    pin: GPIO5
+  # Main button (Input A) with multi-click behavior for light/fan control
+  - platform: template
+    name: "${friendly_name} Main Button"
+    id: "main_button"
+    lambda: |-
+      return id(input_a).state;
     filters:
       - delayed_on_off: 50ms
     on_multi_click:
 
-      # Single click (short press) - toggle relay_1
+      # Single click (short press) - toggle relay_a (light)
       - timing:
           - ON for at most 1s
         then:
-          - logger.log: "${device_name} Button - TAP"
-          - switch.toggle: relay_1
+          - logger.log: "${device_name} Button - Toggle Light"
+          - switch.toggle: relay_a
 
-      # Hold (long press) - turn on relay_2, then off after 60 minutes
+      # Hold (long press) - toggle relay_b (fan), then off after 60 minutes
       - timing:
           - ON for at least 1s
         then:
-          - logger.log: "${device_name} Button - HOLD"
-          - switch.toggle: relay_2
+          - logger.log: "${device_name} Button - Toggle Fan"
+          - switch.toggle: relay_b
           - if:
               condition:
-                switch.is_on: relay_2
+                switch.is_on: relay_b
               then:
                 - delay: 60min
-                - switch.turn_off: relay_2
+                - switch.turn_off: relay_b
     internal: true
 
-  # Input 2
-  - platform: gpio
-    id: "input_2"
-    name: "${input_name_2}"
-    pin: GPIO18
+  # Second button (Input B) - toggle relay_b (fan) directly
+  - platform: template
+    name: "${friendly_name} Fan Button"
+    id: "fan_button"
+    lambda: |-
+      return id(input_b).state;
     filters:
       - delayed_on_off: 50ms
     on_press:
       then:
-        - switch.toggle: relay_2
+        - switch.toggle: relay_b
     internal: true
