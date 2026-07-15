@@ -1,6 +1,6 @@
 substitutions:
-  device_name: "llum-ventilador-marc"
-  friendly_name: "llum-ventilador-marc"
+  device_name: "llum-ventilador-marcscave"
+  friendly_name: "llum-ventilador-marcscave"
   output_name_1: "Output 1"
   output_name_2: "Output 2"
   input_name_1: "Input 1"
@@ -69,7 +69,7 @@ binary_sensor:
                 - delay: 60min
                 - switch.turn_off: relay_2
     internal: true
-  
+
   # Input 2
   - platform: gpio
     id: "input_2"
