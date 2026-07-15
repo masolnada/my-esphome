@@ -47,7 +47,7 @@ binary_sensor:
     id: sw1
     pin: GPIO5
     filters:
-      - delayed_on_off: 100ms
+      - delayed_on_off: 10ms
     on_press:
       then:
         - lambda: |-
