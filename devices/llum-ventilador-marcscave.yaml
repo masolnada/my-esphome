@@ -3,6 +3,8 @@ substitutions:
   device_id: "llum_ventilador_marcscave"
   friendly_name: "Llum Ventilador Marcscave"
   topic_prefix: "llum_ventilador_marcscave"
+  # Aqara WXKG11LM wireless button paired to the homelab z2m (baixos coordinator)
+  aqara_button_topic: "zigbee2mqtt-baixos/boto-marcscave"
 
 packages:
 
@@ -32,6 +34,34 @@ switch:
     interlock: !remove
     interlock_wait_time: !remove
 
+# The Aqara button mirrors the physical main button:
+# single click -> light, hold -> fan.
+mqtt:
+  on_message:
+    - topic: "${aqara_button_topic}"
+      qos: 1
+      then:
+        - lambda: |-
+            StaticJsonDocument<512> doc;
+            auto error = deserializeJson(doc, x);
+            if (error) {
+              ESP_LOGW("MQTT", "Failed to parse JSON: %s", error.c_str());
+              return;
+            }
+
+            // Battery/linkquality-only updates carry no "action" key.
+            if (!doc.containsKey("action")) return;
+            const char *action = doc["action"].as<const char*>();
+            if (action == nullptr) return;
+
+            if (strcmp(action, "single") == 0) {
+              ESP_LOGI("MQTT", "${device_name} Aqara button single - Toggle Light");
+              id(toggle_light).execute();
+            } else if (strcmp(action, "hold") == 0) {
+              ESP_LOGI("MQTT", "${device_name} Aqara button hold - Toggle Fan");
+              id(toggle_fan).execute();
+            }
+
 binary_sensor:
 
   # Main button (Input A) with multi-click behavior for light/fan control
@@ -49,23 +79,17 @@ binary_sensor:
           - ON for at most 1s
         then:
           - logger.log: "${device_name} Button - Toggle Light"
-          - switch.toggle: relay_a
+          - script.execute: toggle_light
 
       # Hold (long press) - toggle relay_b (fan), then off after 60 minutes
       - timing:
           - ON for at least 1s
         then:
           - logger.log: "${device_name} Button - Toggle Fan"
-          - switch.toggle: relay_b
-          - if:
-              condition:
-                switch.is_on: relay_b
-              then:
-                - delay: 60min
-                - switch.turn_off: relay_b
+          - script.execute: toggle_fan
     internal: true
 
-  # Second button (Input B) - toggle relay_b (fan) directly
+  # Second button (Input B) - toggle relay_b (fan) directly, no auto-off
   - platform: template
     name: "${friendly_name} Fan Button"
     id: "fan_button"
@@ -77,3 +101,22 @@ binary_sensor:
       then:
         - switch.toggle: relay_b
     internal: true
+
+script:
+
+  - id: toggle_light
+    then:
+      - switch.toggle: relay_a
+
+  # restart mode cancels a pending auto-off when the fan is toggled again,
+  # so a stale timer from an earlier run can't kill a fresh 60-minute window.
+  - id: toggle_fan
+    mode: restart
+    then:
+      - switch.toggle: relay_b
+      - if:
+          condition:
+            switch.is_on: relay_b
+          then:
+            - delay: 60min
+            - switch.turn_off: relay_b
