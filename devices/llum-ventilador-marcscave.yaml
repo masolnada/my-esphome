@@ -3,8 +3,10 @@ substitutions:
   device_id: "llum_ventilador_marcscave"
   friendly_name: "Llum Ventilador Marcscave"
   topic_prefix: "llum_ventilador_marcscave"
-  # Aqara WXKG11LM wireless button paired to the homelab z2m (baixos coordinator)
-  aqara_button_topic: "zigbee2mqtt-baixos/boto-marcscave"
+  # Aqara WXKG11LM wireless button paired to the homelab z2m (baixos coordinator).
+  # Must track the device's friendly_name in z2m — renaming it there silently
+  # stops this subscription from ever matching.
+  aqara_button_topic: "zigbee2mqtt-baixos/marcscave-button"
 
 packages:
 
