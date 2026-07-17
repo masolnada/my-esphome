@@ -1,0 +1,140 @@
+# Shutter travel-time auto-calibration
+#
+# Learns the cover's real open/close travel times and feeds them into the
+# current_based cover at runtime, so `open_duration`/`close_duration` in the
+# device YAML only serve as first-boot defaults.
+#
+# How it works: every travel that starts at one endpoint and ends at the
+# other with no manual STOP is timed (the elapsed time naturally includes the
+# ~0.5-1s current-sensing end-detection lag, biasing the estimate slightly
+# long, which is the safe direction). The result +5% is applied via
+# set_open_duration()/set_close_duration() and persisted across reboots.
+#
+# Requirements in the including device config:
+#   - a current_based cover with id `blind`
+#   - any automation that stops the cover outside MQTT (wall switch/button
+#     stop branches) must set `id(autocal_manual_stop) = true;` so a stop
+#     inside the estimate's clamp window is not mistaken for a full travel
+#
+# Usage:
+#   packages:
+#     autocal: !include
+#       file: ../packages/shutter-autocal/shutter-autocal.yaml
+#       vars:
+#         device_name: ${device_name}
+
+globals:
+  # Learned durations in ms; 0 = not learned yet, keep compiled defaults
+  - id: autocal_open_ms
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+  - id: autocal_close_ms
+    type: int
+    restore_value: yes
+    initial_value: '0'
+
+  # Travel tracking state
+  - id: autocal_prev_op
+    type: int
+    restore_value: no
+    initial_value: '0'  # 0 idle, 1 opening, 2 closing
+
+  - id: autocal_start_ms
+    type: unsigned long
+    restore_value: no
+    initial_value: '0'
+
+  - id: autocal_start_pos
+    type: float
+    restore_value: no
+    initial_value: '-1.0'
+
+  - id: autocal_manual_stop
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+esphome:
+  on_boot:
+    # After component setup (cover restores at DATA priority), before network
+    priority: 250
+    then:
+      - lambda: |-
+          if (id(autocal_open_ms) > 0) {
+            id(blind).set_open_duration((uint32_t) id(autocal_open_ms));
+            ESP_LOGI("autocal", "Restored learned open duration: %.1fs", id(autocal_open_ms) / 1000.0f);
+          }
+          if (id(autocal_close_ms) > 0) {
+            id(blind).set_close_duration((uint32_t) id(autocal_close_ms));
+            ESP_LOGI("autocal", "Restored learned close duration: %.1fs", id(autocal_close_ms) / 1000.0f);
+          }
+
+mqtt:
+  on_message:
+    # Any STOP from HA/MQTT disqualifies the in-flight travel from learning:
+    # a stop while the estimate is clamped at an endpoint would otherwise
+    # look like a completed (too fast) full travel.
+    - topic: ${device_name}/cover/blind/command
+      then:
+        - lambda: |-
+            if (x == "STOP") {
+              id(autocal_manual_stop) = true;
+            }
+
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          auto op = id(blind).current_operation;
+          int op_i = op == cover::COVER_OPERATION_OPENING ? 1
+                   : op == cover::COVER_OPERATION_CLOSING ? 2 : 0;
+          if (op_i == id(autocal_prev_op))
+            return;
+
+          if (op_i != 0) {
+            // Travel started (a direct reversal re-captures here and its
+            // intermediate start position disqualifies it below)
+            id(autocal_start_ms) = millis();
+            id(autocal_start_pos) = id(blind).position;
+            id(autocal_manual_stop) = false;
+          } else {
+            const float end_pos = id(blind).position;
+            const unsigned long elapsed = millis() - id(autocal_start_ms);
+            const bool full_open = id(autocal_prev_op) == 1
+                && id(autocal_start_pos) <= 0.01f && end_pos >= 0.99f;
+            const bool full_close = id(autocal_prev_op) == 2
+                && id(autocal_start_pos) >= 0.99f && end_pos <= 0.01f;
+
+            if (!id(autocal_manual_stop) && (full_open || full_close)
+                && elapsed > 5000 && elapsed < 60000) {
+              const int learned = (int) (elapsed * 1.05f);
+              if (full_open) {
+                id(autocal_open_ms) = learned;
+                id(blind).set_open_duration((uint32_t) learned);
+                ESP_LOGI("autocal", "Learned open duration: %.1fs (travel %.1fs)",
+                         learned / 1000.0f, elapsed / 1000.0f);
+              } else {
+                id(autocal_close_ms) = learned;
+                id(blind).set_close_duration((uint32_t) learned);
+                ESP_LOGI("autocal", "Learned close duration: %.1fs (travel %.1fs)",
+                         learned / 1000.0f, elapsed / 1000.0f);
+              }
+            }
+            id(autocal_manual_stop) = false;
+          }
+          id(autocal_prev_op) = op_i;
+
+text_sensor:
+  - platform: template
+    name: "Calibrated Travel Times"
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      char buf[48];
+      snprintf(buf, sizeof(buf), "open %.1fs / close %.1fs%s",
+               id(autocal_open_ms) / 1000.0f,
+               id(autocal_close_ms) / 1000.0f,
+               (id(autocal_open_ms) > 0 && id(autocal_close_ms) > 0) ? "" : " (learning)");
+      return std::string(buf);
