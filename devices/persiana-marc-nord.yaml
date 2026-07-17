@@ -12,7 +12,20 @@ substitutions:
   # current_based cover needs fresh current readings to detect the motor
   power_update_interval: "0.5s"
 
+# Local fork of current_based: endpoint commands always drive the motor so a
+# stale position estimate can't strand the cover (see components/current_based)
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [current_based]
+
 packages:
+  # Travel-time auto-calibration for the blind cover
+  autocal: !include
+    file: ../packages/shutter-autocal/shutter-autocal.yaml
+    vars:
+      device_name: ${device_name}
   # Hardware configuration
   hardware: !include
     file: ../hardware/shelly-plus-2.yaml
@@ -55,7 +68,11 @@ binary_sensor:
             switch (id(sw1_state)) {
               case 0: call.set_command_open(); break;
               case 2: call.set_command_close(); break;
-              default: call.set_command_stop(); break;
+              default:
+                call.set_command_stop();
+                // A manual stop must not be mistaken for a completed travel
+                id(autocal_manual_stop) = true;
+                break;
             }
             call.perform();
             id(sw1_state) = (id(sw1_state) + 1) % 4;
@@ -89,13 +106,17 @@ cover:
     # Motor draws ~0.73A while moving; threshold must sit below that
     open_moving_current_threshold: 0.4
     # Full travel measured 2026-07 via MQTT (motor-on until endstop current drop)
-    open_duration: 17s
+    # First-boot default only: the autocal package learns the real
+    # travel time at runtime. Bias long, never short.
+    open_duration: 18s
     open_action:
       - switch.turn_on: relay_1
 
     close_sensor: current_channel_1
     close_moving_current_threshold: 0.4
-    close_duration: 16.5s
+    # First-boot default only: the autocal package learns the real
+    # travel time at runtime. Bias long, never short.
+    close_duration: 18s
     close_action:
       - switch.turn_on: relay_2
 
