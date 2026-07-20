@@ -25,9 +25,19 @@ packages:
   halt-automations: !include
     file: ../packages/halt-automations.yaml
 
+# The hardware package interlocks the relays for shutter use; light and fan
+# must be allowed on together.
+switch:
+  - id: !extend relay_a
+    interlock: !remove
+    interlock_wait_time: !remove
+  - id: !extend relay_b
+    interlock: !remove
+    interlock_wait_time: !remove
+
 binary_sensor:
 
-  # Main button with multi-click behavior for light/fan control
+  # Main button (Input A) with multi-click behavior for light/fan control
   - platform: template
     name: "${friendly_name} Main Button"
     id: "main_button"
@@ -37,23 +47,51 @@ binary_sensor:
       - delayed_on_off: 50ms
     on_multi_click:
 
-      # Single click (short press) - toggle relay_a (light)
+      # Single click (short press) - toggle relay_b (light)
       - timing:
           - ON for at most 1s
         then:
           - logger.log: "${device_name} Button - Toggle Light"
-          - switch.toggle: relay_a
+          - script.execute: toggle_light
 
-      # Hold (long press) - toggle relay_b (fan) with auto-off
+      # Hold (long press) - toggle relay_a (fan), then off after 60 minutes
       - timing:
           - ON for at least 1s
         then:
           - logger.log: "${device_name} Button - Toggle Fan"
-          - switch.toggle: relay_b
-          - if:
-              condition:
-                switch.is_on: relay_b
-              then:
-                - delay: 20min
-                - switch.turn_off: relay_b
+          - script.execute: toggle_fan
     internal: true
+
+  # Second button (Input B) - toggle relay_a (fan) directly, no auto-off
+  - platform: template
+    name: "${friendly_name} Fan Button"
+    id: "fan_button"
+    lambda: |-
+      return id(input_b).state;
+    filters:
+      - delayed_on_off: 50ms
+    on_press:
+      then:
+        - switch.toggle: relay_a
+    internal: true
+
+# Unlike the other fan/light devices, this one has the loads reversed:
+# relay_a drives the fan and relay_b drives the light.
+script:
+
+  - id: toggle_light
+    then:
+      - switch.toggle: relay_b
+
+  # restart mode cancels a pending auto-off when the fan is toggled again,
+  # so a stale timer from an earlier run can't kill a fresh 60-minute window.
+  - id: toggle_fan
+    mode: restart
+    then:
+      - switch.toggle: relay_a
+      - if:
+          condition:
+            switch.is_on: relay_a
+          then:
+            - delay: 60min
+            - switch.turn_off: relay_a
