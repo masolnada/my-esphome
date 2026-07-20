@@ -4,6 +4,19 @@ substitutions:
   friendly_name: "Llum Ventilador Menjador"
   topic_prefix: "llum_ventilador_menjador"
 
+  # Shelly Pro 3EM "energy-meter_armari" (10.0.20.41). Channel B's clamp is on
+  # the fireplace fan. That phase has no voltage lead connected (b_voltage
+  # floats around 9-10 V), so b_act_power is always 0.0 W and only b_current
+  # carries usable information.
+  fireplace_topic: "shellypro3em-34987a44fb48/status/em:0"
+
+  # Measured 2026-07-20: ~0.26 A with the fan running, ~0.037 A idle noise on
+  # the 120 A clamp. Half the running draw sits clear of both.
+  fireplace_current_threshold: "0.13"
+
+  fan_cycle_on_time: "5min"
+  fan_cycle_off_time: "5min"
+
 packages:
 
   shelly-25: !include ../hardware/shelly-25.yaml
@@ -35,7 +48,72 @@ switch:
     interlock: !remove
     interlock_wait_time: !remove
 
+globals:
+  # Set by any manual fan action; suppresses the cycle for the rest of the
+  # current burn. Cleared when the fireplace fan next starts up.
+  - id: manual_override
+    type: bool
+    restore_value: no
+    initial_value: "false"
+
+  # millis() of the last parsed energy-meter message, to notice the meter
+  # going away (broker or Shelly down) instead of trusting a stale reading.
+  - id: last_fireplace_msg
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+sensor:
+  # Fireplace fan current, mirrored from the energy meter over MQTT.
+  - platform: template
+    id: fireplace_current
+    name: "${friendly_name} Fireplace Fan Current"
+    unit_of_measurement: "A"
+    accuracy_decimals: 3
+    update_interval: never
+
 binary_sensor:
+
+  # The fireplace fan is running. The delays keep a brief current spike or a
+  # dropped meter message from starting/stopping a whole cycle.
+  - platform: template
+    id: fireplace_running
+    name: "${friendly_name} Fireplace Fan Running"
+    # Without this the triggers below are skipped for whatever state the
+    # sensor settles into first, so booting while the fireplace is already
+    # running would never start the cycle.
+    trigger_on_initial_state: true
+    lambda: |-
+      // Stay unknown until the meter has actually reported, so the first
+      // published state is a real reading and does fire a trigger.
+      if (!id(fireplace_current).has_state()) {
+        return {};
+      }
+      return id(fireplace_current).state > ${fireplace_current_threshold};
+    filters:
+      - delayed_on: 10s
+      - delayed_off: 60s
+    on_press:
+      then:
+        # A new burn starts with a clean slate: manual choices from the
+        # previous one don't carry over.
+        - lambda: "id(manual_override) = false;"
+        - logger.log: "${device_name} Fireplace fan started - cycling fan"
+        - script.execute: fan_cycle
+    on_release:
+      then:
+        - logger.log: "${device_name} Fireplace fan stopped - cycle ends"
+        # Only switch the fan off if the cycle was the one running it. A
+        # manual press already stopped the script, and on a fresh boot with
+        # the fireplace cold it was never running, so in both cases the fan
+        # is left exactly where the user put it.
+        - if:
+            condition:
+              script.is_running: fan_cycle
+            then:
+              - script.stop: fan_cycle
+              - script.stop: toggle_fan
+              - switch.turn_off: relay_a
 
   # Main button (Input A) with multi-click behavior for light/fan control
   - platform: template
@@ -72,6 +150,7 @@ binary_sensor:
       - delayed_on_off: 50ms
     on_press:
       then:
+        - script.execute: take_manual_control
         - switch.toggle: relay_a
     internal: true
 
@@ -88,6 +167,7 @@ script:
   - id: toggle_fan
     mode: restart
     then:
+      - script.execute: take_manual_control
       - switch.toggle: relay_a
       - if:
           condition:
@@ -95,3 +175,63 @@ script:
           then:
             - delay: 60min
             - switch.turn_off: relay_a
+
+  # Any manual fan action wins over the fireplace automation: the cycle is
+  # abandoned mid-phase (so the pending 5-minute delay can't flip the relay
+  # back) and stays off until the fireplace fan starts again.
+  - id: take_manual_control
+    then:
+      - if:
+          condition:
+            lambda: "return !id(manual_override);"
+          then:
+            - logger.log: "${device_name} Manual fan action - automation yields"
+      - lambda: "id(manual_override) = true;"
+      - script.stop: fan_cycle
+
+  # Alternate 5 minutes on / 5 minutes off for as long as the fireplace fan
+  # draws current. The conditions are re-checked once per full cycle; anything
+  # that must interrupt sooner stops the script outright.
+  - id: fan_cycle
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: |-
+              return id(fireplace_running).state && !id(manual_override) &&
+                     !id(halt_automations);
+          then:
+            - switch.turn_on: relay_a
+            - delay: ${fan_cycle_on_time}
+            - switch.turn_off: relay_a
+            - delay: ${fan_cycle_off_time}
+
+mqtt:
+  on_message:
+    - topic: ${fireplace_topic}
+      qos: 0
+      then:
+        - lambda: |-
+            json::parse_json(x, [](JsonObject root) -> bool {
+              if (!root["b_current"].is<float>()) {
+                return false;
+              }
+              id(last_fireplace_msg) = millis();
+              id(fireplace_current).publish_state(root["b_current"].as<float>());
+              return true;
+            });
+
+interval:
+  # The meter publishes about once a second. If it goes quiet the last reading
+  # is meaningless, so fall back to "not running" rather than cycling forever.
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(fireplace_current).has_state() &&
+                     id(fireplace_current).state > ${fireplace_current_threshold} &&
+                     (millis() - id(last_fireplace_msg)) > 300000;
+          then:
+            - logger.log: "${device_name} No energy meter data for 5 min - assuming fireplace fan off"
+            - lambda: "id(fireplace_current).publish_state(0.0f);"

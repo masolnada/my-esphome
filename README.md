@@ -55,7 +55,7 @@ All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Ev
 | **llum-escala** | Shelly Plus 1 | 💡 Light | DHCP | `llum-escala.local` | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently below horizon (nighttime); no-op during the day |
 | **llum-ventilador-marc** | Shelly Plus 2 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marc.local` | none custom (standard switch entities `Output 1`/`Output 2`) |
 | **llum-ventilador-marcscave** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marcscave.local` | none custom (standard switch entities `Relay A`/`Relay B`); *listens* to `zigbee2mqtt-baixos/boto-marcscave` (Aqara button): `single` → toggle light (Relay A), `hold` → toggle fan (Relay B, 60-min auto-off) — same actions as the physical main button |
-| **llum-ventilador-menjador** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-menjador.local` | none custom (standard switch entities) |
+| **llum-ventilador-menjador** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-menjador.local` | none custom (standard switch entities `Relay A` = fan, `Relay B` = light); *listens* to `shellypro3em-34987a44fb48/status/em:0` (energy meter, channel B = fireplace fan): while `b_current` > 0.10 A it cycles the fan 5 min on / 5 min off — see [Fireplace fan cycling](#-fireplace-fan-cycling) |
 
 ### 🪟 Shutters
 
@@ -82,6 +82,18 @@ All shutters expose a standard `cover` entity named `Blind`, driven over MQTT wi
 **Shared/global topic** — not device-specific: `halt_automations` (payload `ON`/`OFF`) pauses automations on every device that includes `packages/halt-automations.yaml` (currently: `llum-cuina`, `llum-ambient-dormitori`, `llum-ventilador-menjador`, `persiana-marc-nord`, `persiana-marc-piscina`). Publishing to it affects **all** of those devices at once, since the topic has no per-device prefix.
 
 **Note on llum-cuina**: it also *listens* to an external topic, `zigbee2mqtt/laia-marc-porta-garatge-contact-sensor`, to trigger a nighttime effect when the garage door opens — this isn't a direct action on the device, just an automation input.
+
+### 🔥 Fireplace fan cycling
+
+`llum-ventilador-menjador` cycles its ceiling fan (Relay A) to spread the fireplace's heat while the fireplace blower runs.
+
+**Source signal** — the Shelly Pro 3EM `energy-meter_armari` (`10.0.20.41`) publishes all three clamps in one message on `shellypro3em-34987a44fb48/status/em:0` (~1/s). The fireplace fan is clamp **B**. That phase has **no voltage lead connected** (`b_voltage` floats at ~9–10 V), so `b_act_power` reads a permanent `0.0` W and is useless — the automation keys off **`b_current`** instead. Idle noise on the 120 A clamp is ~0.028 A; the threshold is `fireplace_current_threshold` (currently `0.10` A) in the device's `substitutions`. **This threshold is not calibrated** — measure the fan's actual draw the first time the fireplace is lit (watch `llum-ventilador-menjador/sensor/..._fireplace_fan_current/state`) and set it to roughly half of that.
+
+**Behaviour**:
+- Fireplace fan draws current (10 s debounce) → ceiling fan runs 5 min on / 5 min off, repeating.
+- Fireplace fan stops (60 s debounce, or 5 min without any meter message) → cycle ends and the ceiling fan is switched off.
+- **Manual wins**: any press of the main button (hold) or the fan button aborts the cycle mid-phase and suspends the automation — a manually-off fan won't come back after 5 minutes, and a manually-on fan won't be switched off, not even when the fireplace stops. The suspension is cleared when the fireplace fan next starts, so each burn begins fresh.
+- `halt_automations: ON` stops the cycle at the end of the current phase.
 
 ## 🛠️ Useful Commands
 
