@@ -1,0 +1,133 @@
+substitutions:
+  device_name: "timbre-baixos"
+  friendly_name: "timbre-baixos"
+  topic_prefix: "timbre_baixos"
+
+packages:
+  hardware: !include
+    file: ../hardware/shelly-plus-1.yaml
+    vars:
+      device_name: ${device_name}
+      friendly_name: ${friendly_name}
+
+  wifi: !include
+    file: ../common/wifi.yaml
+    vars:
+      device_name: ${device_name}
+
+  mqtt: !include
+    file: ../common/mqtt.yaml
+    vars:
+      device_name: ${device_name}
+
+  logger: !include ../common/logger.yaml
+  reset: !include ../common/reset.yaml
+  time: !include ../common/time.yaml
+  web-server: !include ../common/web-server.yaml
+
+# Merged into the wifi config from common/wifi.yaml. Kept here rather than in
+# common/ so every other device stays on DHCP.
+# Gateway and subnet were read off the IoT VLAN, not assumed: 10.0.20.0/24,
+# default via 10.0.20.1.
+# Keep the router-side DHCP reservation for .45 in place as well — with it gone,
+# DHCP could hand this address to something else and collide.
+wifi:
+  manual_ip:
+    static_ip: 10.0.20.45
+    gateway: 10.0.20.1
+    subnet: 255.255.255.0
+    dns1: 10.0.20.1
+  # This device sits at roughly -80 dBm, far weaker than anything else on the
+  # network, and was dropping its MQTT session several times a day while every
+  # other device dropped none. LIGHT power save parks the radio between DTIM
+  # beacons, which is what turns a marginal link into a dropped one. It costs
+  # nothing to disable here since the bell is mains powered.
+  power_save_mode: NONE
+
+# Remote bell for the basement: two ~1s strikes of the 230V gong, spaced by a
+# short gap so the second one reads as part of the same ring, so we hear someone
+# at the entrance from downstairs. The relay is a dry contact — mains is fed
+# through it from L to I, the Shelly supplies no voltage of its own.
+script:
+  - id: ring
+    mode: restart
+    then:
+      - switch.turn_on: relay
+      - delay: 1s
+      - switch.turn_off: relay
+      - delay: 500ms
+      - switch.turn_on: relay
+      - delay: 1s
+      - switch.turn_off: relay
+
+# Same one-strike script, triggered by hand from the web UI (and from the
+# standard MQTT button topic). Handy for testing the gong without ringing the
+# intercom downstairs.
+button:
+  - platform: template
+    name: "${device_name} Ring"
+    icon: "mdi:bell-ring"
+    on_press:
+      - script.execute: ring
+
+# Fail-safe. The relay was found latched ON once already, which leaves the gong
+# energised continuously. restore_mode is ALWAYS_OFF so a reboot clears it, but
+# nothing cleared it while the device stayed up. If the relay is on while the
+# ring script is not running, that is always wrong.
+interval:
+  - interval: 10s
+    then:
+      - if:
+          condition:
+            - switch.is_on: relay
+            - not:
+                script.is_running: ring
+          then:
+            - logger.log: "relay latched on outside a ring - forcing off"
+            - switch.turn_off: relay
+
+mqtt:
+  # The broker logs this client as c0 (persistent session), so with a QoS 1
+  # subscription mosquitto both retries lossy deliveries and queues anything
+  # published while the device is offline, handing it over on reconnect.
+  # At QoS 0 a ring published during a dropout was simply discarded.
+  keepalive: 60s
+
+  # common/mqtt.yaml disables the MQTT reboot so the shutters ride out a broker
+  # outage, but a doorbell that has silently lost its subscription is useless
+  # and nobody would notice. Reboot after 15 min unreachable and re-subscribe.
+  reboot_timeout: 15min
+
+  on_message:
+    - topic: "${topic_prefix}/ring"
+      qos: 1
+      then:
+        # The queueing above cuts both ways: a ring published while the bell was
+        # offline arrives on reconnect, which could be minutes after whoever
+        # pressed the bell gave up and left. mqtt-rules sends its epoch
+        # timestamp as the payload, so anything older than 30s is dropped here.
+        # A payload that is not a timestamp — the web UI button, a hand-typed
+        # mosquitto_pub — has no age and always rings.
+        - if:
+            condition:
+              lambda: |-
+                const time_t sent = atol(x.c_str());
+                if (sent <= 0) return true;
+                auto now = id(sntp_time).now();
+                if (!now.is_valid()) return true;
+                return now.timestamp - sent < 30;
+            then:
+              # WARN, not the default DEBUG: common/logger.yaml runs at WARN, so
+              # a DEBUG line here is compiled out and the bell leaves no trace of
+              # what it received. These two lines are the only evidence that
+              # separates "never delivered" from "delivered but did not ring".
+              - logger.log:
+                  level: WARN
+                  format: "ring: accepted (%s)"
+                  args: ["x.c_str()"]
+              - script.execute: ring
+            else:
+              - logger.log:
+                  level: WARN
+                  format: "ring: dropped as stale (%s)"
+                  args: ["x.c_str()"]
