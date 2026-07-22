@@ -1,4 +1,5 @@
 sun:
+  id: home_sun
   # Cardona's Coordinates
   latitude: 41.913607
   longitude: 1.6797134

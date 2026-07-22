@@ -52,7 +52,7 @@ All devices publish/subscribe on the broker configured in `common/mqtt.yaml`. Ev
 |---|---|---|---|---|---|
 | **llum-cuina** | Shelly Plus RGBW PM | 💡 Light | `10.0.20.34` | `llum-cuina.local` | `llum_cuina/toggle/llum_barra` — toggle bar lights<br>`llum_cuina/toggle/llum_pica` — toggle sink lights<br>`llum_cuina/brightness_cold_white` — set cold-white brightness (`{"brightness": 0.0-1.0}`)<br>`llum_cuina/brightness_warm_white` — set warm-white brightness (`{"brightness": 0.0-1.0}`)<br>`llum_cuina/toggle_effect` — toggle the fade effect |
 | **llum-ambient-dormitori** | Shelly RGBW2 | 💡 Light | DHCP | `llum-ambient-dormitori.local` | none custom (standard light entity) |
-| **llum-escala** | Shelly Plus 1 | 💡 Light | DHCP | `llum-escala.local` | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently below horizon (nighttime); no-op during the day |
+| **llum-escala** | Shelly Plus 1 | 💡 Light | DHCP | `llum-escala.local` | `llum_escala/auto_trigger` — turns the light on for 5 min if it's currently within the window from 1 h before sunset until sunrise; no-op outside it |
 | **llum-ventilador-marc** | Shelly Plus 2 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marc.local` | none custom (standard switch entities `Output 1`/`Output 2`) |
 | **llum-ventilador-marcscave** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-marcscave.local` | none custom (standard switch entities `Relay A`/`Relay B`); *listens* to `zigbee2mqtt-baixos/boto-marcscave` (Aqara button): `single` → toggle light (Relay A), `hold` → toggle fan (Relay B, 60-min auto-off) — same actions as the physical main button |
 | **llum-ventilador-menjador** | Shelly 2.5 | 💨 Switch relays (fan/light) | DHCP | `llum-ventilador-menjador.local` | none custom (standard switch entities `Relay A` = fan, `Relay B` = light); *listens* to `shellypro3em-34987a44fb48/status/em:0` (energy meter, channel B = fireplace fan): while `b_current` > 0.10 A it cycles the fan 5 min on / 5 min off — see [Fireplace fan cycling](#-fireplace-fan-cycling) |
@@ -78,6 +78,14 @@ All shutters expose a standard `cover` entity named `Blind`, driven over MQTT wi
 | **persiana-bany** | Shelly 2.5 | Button | `10.0.20.56` | `persiana-bany.local` | ~1 A (est., big shutter) | 0.5 A |
 | **persiana-conills** | Shelly 2.5 | Dual switch | `10.0.20.57` | `persiana-conills.local` | ~1 A (est., big shutter) | 0.5 A |
 | **persiana-habitacio-sud** | Shelly 2.5 | Dual switch | `10.0.20.58` | `persiana-habitacio-sud.local` | ~1 A (est., big shutter) | 0.5 A |
+
+### 🔔 Bells
+
+| Device | Hardware | Type | IP | mDNS | MQTT Actions |
+|---|---|---|---|---|---|
+| **timbre-baixos** | Shelly 1 Gen3 | 🔔 Bell relay | DHCP | `timbre-baixos.local` | `timbre_baixos/ring` — rings the basement bell for ~5 s (3 pulses of 1 s on / 0.5 s off). Retriggering restarts the pattern (`script mode: restart`). |
+
+Remote repeater of the entrance bell so it's audible from the basement. MQTT-only: nothing is wired to the SW input, and the relay is pulsed by the `ring` script — the device button just restarts the node. The Shelly 1 Gen3 is ESP32-C3 based and **needs a serial flash the first time** (see [Manual USB Flashing](#-manual-usb-flashing-macos)); the SW input on GPIO10 is reportedly not wired like the 1PM Gen3, so `hardware/shelly-1-gen3.yaml` leaves it unconfigured.
 
 **Shared/global topic** — not device-specific: `halt_automations` (payload `ON`/`OFF`) pauses automations on every device that includes `packages/halt-automations.yaml` (currently: `llum-cuina`, `llum-ambient-dormitori`, `llum-ventilador-menjador`, `persiana-marc-nord`, `persiana-marc-piscina`). Publishing to it affects **all** of those devices at once, since the topic has no per-device prefix.
 

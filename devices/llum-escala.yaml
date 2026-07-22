@@ -56,11 +56,21 @@ mqtt:
       qos: 0
       then:
         - if:
+            # Active from 1 h before sunset until sunrise. Below the horizon is
+            # always in-window (that whole span is night); while the sun is
+            # still up, only the final hour before today's sunset qualifies.
             condition:
-              sun.is_below_horizon:
+              lambda: |-
+                auto s = id(home_sun);
+                if (!s->is_above_horizon()) return true;
+                auto now = id(sntp_time).now();
+                if (!now.is_valid()) return false;
+                auto ss = s->sunset(-0.83333);
+                if (!ss.has_value()) return false;
+                return (ss->timestamp - now.timestamp) <= 3600;
             then:
-              - logger.log: "${device_name} auto trigger - nighttime, turning on light"
+              - logger.log: "${device_name} auto trigger - within window, turning on light"
               - switch.turn_on: relay
               - script.execute: auto_off_5min
             else:
-              - logger.log: "${device_name} auto trigger - daytime, ignoring"
+              - logger.log: "${device_name} auto trigger - outside window, ignoring"
