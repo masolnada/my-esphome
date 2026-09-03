@@ -22,3 +22,7 @@ devenv.local.nix
 .pre-commit-config.yaml
 .venv
 __pycache__/
+
+# Home Agent
+/agent/node_modules/
+/agent/dist/

@@ -9,8 +9,13 @@ Welcome to my cozy smart home setup! 🌟 This repository contains all my ESPHom
 📁 common/            # 🛠️ Shared configurations (wifi, mqtt, etc.)
 📁 hardware/          # 🔧 Hardware-specific templates (Shelly devices)
 📁 packages/          # 📦 Reusable functionality packages
+📁 agent/             # Home Agent Telegram bot and shutter scheduler
 🔐 secrets.yaml      # Your secret credentials (gitignored)
 ```
+
+The standalone [Home Agent](agent/README.md) selects shutter rules from the
+forecast daily maximum, schedules movements, accepts `/shutter-band` overrides,
+and commits conversational rule edits back to this repository.
 
 ## 🚀 Quick Start
 

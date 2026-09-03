@@ -1,10 +1,13 @@
 # Shutter Automation Rules
 #
-# This file is managed by the Hermes Agent.
-# Add new rules by giving instructions to the agent, e.g.,
-# "From now on, open the kitchen shutter 15 minutes after sunrise."
+# This file is managed by Home Agent. Ask it conversationally to edit rules.
+# Rules are selected from today's forecast maximum temperature.
 
-summer:
+thresholds:
+  hot_above: 28
+  cold_below: 18
+
+hot:
   - name: "Group 1: Living Room & Pool Area"
     entities:
       - persiana-menjador
@@ -27,7 +30,6 @@ summer:
   - name: "Group 3: South-Facing Zones (Heat Protection)"
     entities:
       - persiana-cuina-sud
-      - persiana-habitacio-sud
     open:
       trigger: time
       time: '17:00'
@@ -38,7 +40,6 @@ summer:
   - name: "Group 3b: South-Facing Zones (Evening Close)"
     entities:
       - persiana-cuina-sud
-      - persiana-habitacio-sud
     close:
       trigger: sunset
       offset: -30
@@ -46,21 +47,18 @@ summer:
   - name: "Group 3c: South-Facing (Morning Open)"
     entities:
       - persiana-cuina-sud
-      - persiana-habitacio-sud
     open:
       trigger: sunrise
-      offset: -30
+      offset: 0
 
   - name: "Group 4: Bathroom & Rabbits Area"
     entities:
       - persiana-bany
-      - persiana-conills
     open:
       trigger: sunset
     close:
       trigger: solar_zenith
       offset: 60
 
-autumn: []
-winter: []
-spring: []
+mild: []
+cold: []
