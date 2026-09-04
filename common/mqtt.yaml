@@ -3,4 +3,4 @@ mqtt:
   username: !secret mqtt_broker_username
   password: !secret mqtt_broker_password
   client_id: ${device_name}
-  reboot_timeout: 0s
+  reboot_timeout: 15min
