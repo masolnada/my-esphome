@@ -23,6 +23,9 @@ export interface ActionRule {
   trigger: Trigger;
   offset: number;
   time?: string;
+  position?: number;
+  duration?: number;
+  steps?: number;
 }
 
 export interface RuleGroup {
@@ -92,15 +95,15 @@ function parseGroup(value: unknown, path: string): RuleGroup {
   });
   if (entities.includes("all") && entities.length !== 1) throw new Error(`${path}.entities cannot combine all with named shutters`);
   const result: RuleGroup = { name: group.name, entities };
-  if (group.open !== undefined) result.open = parseAction(group.open, `${path}.open`);
-  if (group.close !== undefined) result.close = parseAction(group.close, `${path}.close`);
+  if (group.open !== undefined) result.open = parseAction(group.open, `${path}.open`, 0, 100);
+  if (group.close !== undefined) result.close = parseAction(group.close, `${path}.close`, 100, 0);
   if (!result.open && !result.close) throw new Error(`${path} must define open or close`);
   return result;
 }
 
-function parseAction(value: unknown, path: string): ActionRule {
+function parseAction(value: unknown, path: string, start: number, defaultPosition: number): ActionRule {
   const action = object(value, path);
-  exactKeys(action, ["trigger", "offset", "time"], path);
+  exactKeys(action, ["trigger", "offset", "time", "position", "duration", "steps"], path);
   if (typeof action.trigger !== "string" || !TRIGGERS.includes(action.trigger as Trigger)) {
     throw new Error(`${path}.trigger must be one of ${TRIGGERS.join(", ")}`);
   }
@@ -112,7 +115,25 @@ function parseAction(value: unknown, path: string): ActionRule {
   } else if (action.time !== undefined) {
     throw new Error(`${path}.time is only valid with trigger: time`);
   }
-  return { trigger, offset, ...(typeof action.time === "string" ? { time: action.time } : {}) };
+
+  const position = action.position === undefined ? undefined : integer(action.position, `${path}.position`);
+  if (position !== undefined && (position < 0 || position > 100)) throw new Error(`${path}.position must be between 0 and 100`);
+  if ((action.duration === undefined) !== (action.steps === undefined)) throw new Error(`${path}.duration and ${path}.steps must be used together`);
+  const duration = action.duration === undefined ? undefined : integer(action.duration, `${path}.duration`);
+  const steps = action.steps === undefined ? undefined : integer(action.steps, `${path}.steps`);
+  if (duration !== undefined && duration <= 0) throw new Error(`${path}.duration must be positive`);
+  if (steps !== undefined && steps < 2) throw new Error(`${path}.steps must be at least 2`);
+  if (duration !== undefined && steps !== undefined && duration % steps !== 0) throw new Error(`${path}.duration must be divisible by ${path}.steps`);
+  if (steps !== undefined && steps > Math.abs((position ?? defaultPosition) - start)) {
+    throw new Error(`${path}.steps would produce duplicate positions`);
+  }
+  return {
+    trigger,
+    offset,
+    ...(typeof action.time === "string" ? { time: action.time } : {}),
+    ...(position !== undefined ? { position } : {}),
+    ...(duration !== undefined ? { duration, steps: steps! } : {}),
+  };
 }
 
 function object(value: unknown, path: string): Record<string, unknown> {

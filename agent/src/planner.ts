@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { atomicWrite, type DayForecast, ForecastService, localDate } from "./forecast.js";
-import { BANDS, DEVICES, bandForTemperature, loadRules, type Band, type Device, type RuleGroup, type ShutterRules, type Trigger } from "./rules.js";
+import { BANDS, DEVICES, bandForTemperature, loadRules, type ActionRule, type Band, type Device, type RuleGroup, type ShutterRules, type Trigger } from "./rules.js";
 import { Shutters, type ShutterCommand } from "./shutters.js";
 
 interface OverrideState { date: string; band: Band }
@@ -65,7 +65,6 @@ export class Planner {
   }
 
   private async plan(): Promise<PlannerStatus> {
-    this.clearSlotTimers();
     const rules = await loadRules(this.rulesPath);
     const forecast = await this.forecast.today();
     const override = await readJson<OverrideState>(this.overridePath);
@@ -77,6 +76,7 @@ export class Planner {
 
     const now = new Date();
     const slots = buildSlots(rules[band], forecast).filter((slot) => slot.time > now && !fired.has(slot.id));
+    this.clearSlotTimers();
     for (const slot of slots) {
       const timer = setTimeout(() => {
         void this.serial(() => this.fire(slot, forecast.date));
@@ -154,17 +154,42 @@ export function buildSlots(groups: RuleGroup[], forecast: DayForecast): PlannedS
     for (const action of ["open", "close"] as const) {
       const rule = group[action];
       if (!rule) continue;
-      const time = triggerTime(rule.trigger, rule.time, rule.offset, forecast);
-      const id = `${forecast.date}:${clock(time).replace(":", "")}`;
-      const slot = byMinute.get(id) ?? { id, time, commands: [] };
+      const finalTime = triggerTime(rule.trigger, rule.time, rule.offset, forecast);
       const entities: readonly Device[] = group.entities.includes("all")
         ? DEVICES
         : group.entities.filter((device): device is Device => device !== "all");
-      slot.commands.push(...entities.map((device) => ({ device, action: action.toUpperCase() as "OPEN" | "CLOSE" })));
-      byMinute.set(id, slot);
+      for (const target of targets(action, rule, finalTime)) {
+        if (rule.duration !== undefined && localDate(target.time) !== forecast.date) throw new Error(`${group.name}.${action} gradual window crosses midnight`);
+        const id = `${forecast.date}:${clock(target.time).replace(":", "")}`;
+        const slot = byMinute.get(id) ?? { id, time: target.time, commands: [] };
+        for (const device of entities) addCommand(slot, { device, action: target.action });
+        if (entities.length) byMinute.set(id, slot);
+      }
     }
   }
   return [...byMinute.values()].sort((left, right) => left.time.getTime() - right.time.getTime());
+}
+
+function targets(action: "open" | "close", rule: ActionRule, finalTime: Date): Array<{ time: Date; action: ShutterCommand["action"] }> {
+  if (rule.duration === undefined || rule.steps === undefined) {
+    return [{ time: finalTime, action: rule.position === undefined ? action.toUpperCase() as "OPEN" | "CLOSE" : String(rule.position) as ShutterCommand["action"] }];
+  }
+  const start = action === "open" ? 0 : 100;
+  const target = rule.position ?? (action === "open" ? 100 : 0);
+  const interval = rule.duration / rule.steps;
+  return Array.from({ length: rule.steps }, (_, index) => {
+    const step = index + 1;
+    return {
+      time: new Date(finalTime.getTime() - (rule.steps! - step) * interval * 60_000),
+      action: String(Math.round(start + (target - start) * step / rule.steps!)) as ShutterCommand["action"],
+    };
+  });
+}
+
+function addCommand(slot: PlannedSlot, command: ShutterCommand): void {
+  const existing = slot.commands.find(({ device }) => device === command.device);
+  if (!existing) slot.commands.push(command);
+  else if (existing.action !== command.action) throw new Error(`conflicting targets for ${command.device} at ${clock(slot.time)}`);
 }
 
 function triggerTime(trigger: Trigger, time: string | undefined, offset: number, forecast: DayForecast): Date {

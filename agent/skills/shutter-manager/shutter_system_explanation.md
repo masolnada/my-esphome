@@ -19,10 +19,20 @@ The response is cached under `/data/state`. If fetching fails, today's entry
 from the cache is used. Rules come from `shutter_rules.yaml`; empty bands mean
 no automatic movement.
 
-The planner expands rules into time slots and arms in-process timers. Past
-slots are skipped. Fired slot IDs are persisted before MQTT publishing, so a
-restart cannot repeat an ambiguous movement. Planning runs again after every
-restart, midnight rollover, rule edit, and manual band override.
+The planner expands rules into time slots and arms in-process timers. Existing
+rules send `OPEN` or `CLOSE`. An action with `position: 0..100` sends one
+absolute percentage command instead. Adding both `duration` and `steps`
+expands that action into evenly spaced percentage commands whose final command
+is sent at the trigger plus offset. Opening ramps assume a 0% start and closing
+ramps assume 100%; they do not read the live position, home first, or guarantee
+that physical movement has finished by the final command time. Gradual windows
+cannot cross midnight.
+
+Past slots are skipped. Fired slot IDs are persisted before MQTT publishing,
+so a restart cannot repeat an ambiguous movement. A restart does not catch up
+missed steps, and manual STOP does not cancel later scheduled steps. Planning
+runs again after every restart, midnight rollover, rule edit, and manual band
+override. A failed replacement plan leaves the existing timers in place.
 
 ## Manual override
 
@@ -37,8 +47,12 @@ Overrides expire naturally when the date changes. Elapsed slots never catch up.
 
 The pi agent reads and edits only
 `agent/skills/shutter-manager/shutter_rules.yaml`. Before commit, the complete
-file is checked for known shutters, known triggers, valid `HH:MM` times, and
-offsets within ±180 minutes. The bot then commits and pushes the change, sends
+file is checked for known shutters, known triggers, valid `HH:MM` times,
+offsets within ±180 minutes, and valid percentage/gradual fields. Gradual
+movement requires positive whole-minute `duration`, integer `steps` of at least
+2, an evenly divisible interval of at least one minute, and no duplicate rounded
+targets. Same-shutter commands in the same minute are deduplicated when equal
+and rejected when conflicting. The bot then commits and pushes the change, sends
 the exact diff to Telegram, and re-plans.
 
 Its git guard refuses to commit any other path, including ESPHome firmware.
