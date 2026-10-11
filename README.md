@@ -17,6 +17,76 @@ The standalone [Home Agent](agent/README.md) selects shutter rules from the
 forecast daily maximum, schedules movements, accepts `/shutter-band` overrides,
 and commits conversational rule edits back to this repository.
 
+## Monitoring architecture and device onboarding
+
+Device firmware and the Home Agent live in this repository. Monitoring is
+configured in the sibling `homelab` repository (`~/dev/homelab/automation/`),
+deployed at `/opt/homelab/automation/` on the homelab server.
+
+```text
+ESPHome devices --------------------> Mosquitto
+Zigbee devices -> Zigbee2MQTT -------> Mosquitto
+Shelly Pro 3EM ---------------------> Mosquitto
+                                         |
+                                      Telegraf
+                                         |
+                                      InfluxDB
+                                      /      \
+                          Grafana dashboards  Gatus -> Telegram
+```
+
+- **Telegraf** subscribes to MQTT and writes readings to the `zigbee` InfluxDB
+  bucket. Its config is `homelab/automation/telegraf/telegraf.conf`.
+  Zigbee reports use measurement `zigbee`, tagged by `device` and `base_topic`;
+  the JSON parser keeps numeric fields, not button actions or other strings.
+  ESPHome connectivity reports use measurement `esphome_heartbeat`, tagged by
+  `device`, from `<device>/sensor/wifi_signal_strength/state`. Firmware in
+  `common/wifi.yaml` publishes Wi-Fi signal every 60 seconds. Shelly energy
+  readings use separate measurements.
+- **Grafana** displays history from InfluxDB. Dashboard provisioning lives in
+  `homelab/automation/grafana/`; publishing to MQTT does not automatically add
+  a dashboard or panel.
+- **Gatus** queries InfluxDB every **5 minutes**, not the physical devices, so
+  polling does not affect battery life. Its config is
+  `homelab/automation/gatus/config.yaml`. Each expected device has an explicit
+  check for any numeric report in the last **3 hours**. It sends one outage
+  notification and one recovery notification through the existing **Gatus
+  Telegram bot**, with reminders disabled. It uses a bucket-scoped read-only
+  InfluxDB token. There is no persistent Gatus storage.
+
+Current Gatus coverage is **19 devices**, grouped as Temperature sensors (6),
+Shutters (9), Lights & fans (3), and Buttons (the entrance button). Other lights,
+the chime and the Shelly energy meter are not currently covered by these device
+checks. The separate Milverds heartbeat remains independent. Hort/fertigation
+is deliberately excluded from home monitoring.
+
+### Required checklist when adding or renaming a home device
+
+1. Configure the device's MQTT publishing and verify its actual live topic and
+   device name. Use a periodic health report, not relay changes or button presses.
+2. **Add InfluxDB ingestion through Telegraf.** Zigbee devices under
+   `zigbee2mqtt-baixos/+` or `zigbee2mqtt-pis/+` are already covered by wildcard
+   subscriptions. For ESPHome, explicitly add its Wi-Fi topic to the
+   `esphome_heartbeat` input. Other payload formats need a suitable input/parser.
+   InfluxDB does not need manual per-device registration: receiving the correctly
+   tagged measurements creates the series.
+3. **Add an explicit Gatus endpoint**, reusing `*home-device` and selecting the
+   appropriate group. Its `name` must exactly match the InfluxDB `device` tag:
+   the query substitutes `[ENDPOINT_NAME]`. Renames must update both ingestion
+   topics and monitoring checks. Check the normal reporting cadence before
+   applying the 3-hour threshold to a new battery-powered device.
+4. Add or update Grafana panels if the device's history should be displayed.
+5. Deploy the affected homelab configuration. Confirm fresh tagged readings in
+   InfluxDB and `success=true` for the new Gatus check; also verify a nonexistent
+   device fails the same query. Keep credentials in server-side `.env` files,
+   never in committed configuration.
+
+See `homelab/automation/gatus/README.md` for monitoring validation and limits.
+A Gatus restart can repeat an outage alert or lose its recovery notification.
+MQTT retained data can temporarily look fresh after Telegraf reconnects, and an
+InfluxDB failure can fail multiple device checks together. These checks detect
+missing reports, not jammed motors or incorrect measurements.
+
 ## 🚀 Quick Start
 
 ### Podman
