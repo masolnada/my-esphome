@@ -54,11 +54,12 @@ Shelly Pro 3EM ---------------------> Mosquitto
   Telegram bot**, with reminders disabled. It uses a bucket-scoped read-only
   InfluxDB token. There is no persistent Gatus storage.
 
-Current Gatus coverage is **19 devices**, grouped as Temperature sensors (6),
-Shutters (9), Lights & fans (3), and Buttons (the entrance button). Other lights,
-the chime and the Shelly energy meter are not currently covered by these device
-checks. The separate Milverds heartbeat remains independent. Hort/fertigation
-is deliberately excluded from home monitoring.
+Current Gatus coverage is **20 devices**, grouped as Temperature sensors (6),
+Shutters (9), Lights & fans (3), Buttons (the entrance button), and Energy meters
+(the Shelly Pro 3EM, `shellypro3em-34987a44fb48`, using `shelly_em` reports).
+Other lights and the chime are not currently covered by these device checks.
+The separate Milverds heartbeat remains independent. Hort/fertigation is
+deliberately excluded from home monitoring.
 
 ### Required checklist when adding or renaming a home device
 
