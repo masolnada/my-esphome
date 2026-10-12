@@ -32,6 +32,7 @@ export class HomeAgent {
     this.runtime = await ModelRuntime.create({
       signal: AbortSignal.timeout(15_000),
       modelsStorePath: resolve(this.config.agentDir, "models-store.json"),
+      modelsPath: resolve(this.config.repoDir, "agent/models.json"),
     });
     const settings = SettingsManager.inMemory({
       defaultProvider: this.config.modelProvider,
@@ -45,7 +46,6 @@ export class HomeAgent {
       cwd: this.config.repoDir,
       agentDir: this.config.agentDir,
       settingsManager: settings,
-      additionalExtensionPaths: [resolve(import.meta.dirname, "../node_modules/@router-for-me/pi-cliproxyapi-provider/extensions/index.ts")],
       systemPromptOverride: () => systemPrompt(this.config.repoDir),
       appendSystemPromptOverride: () => [],
     });

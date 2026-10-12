@@ -7,9 +7,26 @@ import { ForecastService } from "../src/forecast.js";
 import { Planner, buildSlots } from "../src/planner.js";
 import { ROOMS, bandForTemperature, expandEntities, parseRules } from "../src/rules.js";
 import { mqttCommand } from "../src/shutters.js";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 const rulesText = await readFile(new URL("../skills/shutter-manager/shutter_rules.yaml", import.meta.url), "utf8");
 const rules = parseRules(rulesText);
+
+test("9Router model loads with environment authentication", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "home-agent-model-"));
+  const runtime = await ModelRuntime.create({
+    authPath: join(stateDir, "auth.json"),
+    modelsPath: new URL("../models.json", import.meta.url).pathname,
+    modelsStorePath: join(stateDir, "models-store.json"),
+    refreshOnCreate: false,
+  });
+  const model = runtime.getModel("9router", "cx/gpt-5.6-terra");
+  assert.ok(model, runtime.getError());
+  assert.equal(model.baseUrl, "http://9router:20128/v1");
+  assert.equal(model.api, "openai-completions");
+  const credentials = await runtime.getAuth(model, { env: { NINEROUTER_API_KEY: "test-only" } });
+  assert.equal(credentials?.auth.apiKey, "test-only");
+});
 
 test("temperature boundaries and live-derived rule file", () => {
   assert.equal(bandForTemperature(28.1, rules), "hot");
