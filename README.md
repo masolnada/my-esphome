@@ -49,10 +49,13 @@ Shelly Pro 3EM ---------------------> Mosquitto
 - **Gatus** queries InfluxDB every **5 minutes**, not the physical devices, so
   polling does not affect battery life. Its config is
   `homelab/automation/gatus/config.yaml`. Each expected device has an explicit
-  check for any numeric report in the last **3 hours**. It sends one outage
-  notification and one recovery notification through the existing **Gatus
-  Telegram bot**, with reminders disabled. It uses a bucket-scoped read-only
-  InfluxDB token. There is no persistent Gatus storage.
+  check for any numeric report in the last **3 hours**. Individual home-device
+  notifications are disabled. A systemd timer runs
+  `homelab/automation/gatus/digest.py` at **08:00 Europe/Madrid** and sends one
+  aggregated message through the existing **Gatus Telegram bot**, listing
+  current outages and recoveries since the previous morning. Healthy days
+  stay silent. The digest uses existing InfluxDB history and Gatus's inventory,
+  with no new persistent storage. Gatus uses a bucket-scoped read-only token.
 
 Current Gatus coverage is **20 devices**, grouped as Temperature sensors (6),
 Shutters (9), Lights & fans (3), Buttons (the entrance button), and Energy meters
@@ -83,9 +86,10 @@ deliberately excluded from home monitoring.
    never in committed configuration.
 
 See `homelab/automation/gatus/README.md` for monitoring validation and limits.
-A Gatus restart can repeat an outage alert or lose its recovery notification.
-MQTT retained data can temporarily look fresh after Telegraf reconnects, and an
-InfluxDB failure can fail multiple device checks together. These checks detect
+The daily digest is skipped if the server is off at 08:00 or its data sources
+are unavailable; check its systemd journal for failures. MQTT retained data can
+temporarily look fresh after Telegraf reconnects, and an InfluxDB failure can
+fail multiple device checks together. These checks detect
 missing reports, not jammed motors or incorrect measurements.
 
 ## 🚀 Quick Start
