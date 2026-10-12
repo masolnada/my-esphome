@@ -30,7 +30,8 @@ only `agent/skills/shutter-manager/shutter_rules.yaml`.
 Conversational AI uses 9Router at `http://9router:20128/v1` through Pi's
 standard OpenAI-compatible API. `agent/models.json` defines the model;
 set `NINEROUTER_API_KEY`, `PI_MODEL_PROVIDER=9router`, and
-`PI_MODEL_ID=cx/gpt-5.6-terra`. No CLIProxyAPI service or extension is required.
+`PI_MODEL_ID=cx/gpt-6.1-sol`, and `PI_THINKING_LEVEL=high`.
+No CLIProxyAPI service or extension is required.
 The deterministic shutter scheduler does not depend on model availability.
 
 Persistent volumes hold the git clone, pi state and sessions, forecast cache,

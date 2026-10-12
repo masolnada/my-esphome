@@ -20,7 +20,7 @@ test("9Router model loads with environment authentication", async () => {
     modelsStorePath: join(stateDir, "models-store.json"),
     refreshOnCreate: false,
   });
-  const model = runtime.getModel("9router", "cx/gpt-5.6-terra");
+  const model = runtime.getModel("9router", "cx/gpt-6.1-sol");
   assert.ok(model, runtime.getError());
   assert.equal(model.baseUrl, "http://9router:20128/v1");
   assert.equal(model.api, "openai-completions");
