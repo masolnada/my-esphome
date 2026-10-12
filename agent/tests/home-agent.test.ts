@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ForecastService } from "../src/forecast.js";
 import { Planner, buildSlots } from "../src/planner.js";
-import { bandForTemperature, parseRules } from "../src/rules.js";
+import { ROOMS, bandForTemperature, expandEntities, parseRules } from "../src/rules.js";
 import { mqttCommand } from "../src/shutters.js";
 
 const rulesText = await readFile(new URL("../skills/shutter-manager/shutter_rules.yaml", import.meta.url), "utf8");
@@ -14,16 +14,55 @@ const rules = parseRules(rulesText);
 test("temperature boundaries and live-derived rule file", () => {
   assert.equal(bandForTemperature(28.1, rules), "hot");
   assert.equal(bandForTemperature(28, rules), "mild");
-  assert.equal(bandForTemperature(18, rules), "mild");
-  assert.equal(bandForTemperature(17.9, rules), "cold");
+  assert.equal(bandForTemperature(23, rules), "mild");
+  assert.equal(bandForTemperature(22.9, rules), "cold");
   assert.equal(rules.hot.length, 6);
+  assert.deepEqual(rules.disabled, ["habitacio-suli"]);
   assert.deepEqual(rules.mild, []);
-  assert.deepEqual(rules.cold, []);
+  assert.equal(rules.cold.length, 4);
+});
+
+test("cold rules group by orientation and open at sunrise, close at sunset", () => {
+  assert.deepEqual(rules.cold.map(({ entities }) => entities), [
+    ["persiana-cuina-pica", "persiana-menjador", "persiana-marc-piscina"],
+    ["persiana-cuina-sud"],
+    ["persiana-bany"],
+    ["persiana-marc-nord", "persiana-dormitori"],
+  ]);
+  const forecast = { ...day("2026-01-15"), maxTemperature: 22.9 };
+  const disabled = new Set(rules.disabled.flatMap((room) => ROOMS[room]));
+  const slots = buildSlots(rules[bandForTemperature(forecast.maxTemperature, rules)], forecast, disabled);
+  const devices = [
+    "persiana-bany", "persiana-cuina-pica", "persiana-cuina-sud", "persiana-dormitori",
+    "persiana-marc-nord", "persiana-marc-piscina", "persiana-menjador",
+  ];
+  assert.deepEqual(slots.map(({ time, commands }) => ({
+    time,
+    commands: [...commands].sort((a, b) => a.device.localeCompare(b.device)),
+  })), [
+    { time: forecast.sunrise, commands: devices.map((device) => ({ device, action: "OPEN" })) },
+    { time: forecast.sunset, commands: devices.map((device) => ({ device, action: "CLOSE" })) },
+  ]);
+  assert.deepEqual(buildSlots(rules.mild, forecast, disabled), []);
 });
 
 test("rules reject unknown hardware and excessive offsets", () => {
   assert.throws(() => parseRules(rulesText.replace("persiana-bany", "persiana-inventada")), /known shutter/);
+  assert.throws(() => parseRules(rulesText.replace("  - habitacio-suli", "  - garage")), /known room/);
   assert.throws(() => parseRules(rulesText.replace("offset: -60", "offset: -181")), /between -180 and 180/);
+});
+
+test("room groups expand and disabled rooms are omitted from scheduling", () => {
+  assert.deepEqual(expandEntities(["kitchen"]), [...ROOMS.kitchen]);
+  const grouped = parseRules(rulesText.replace("entities:\n      - persiana-cuina-pica", "entities:\n      - kitchen"));
+  const slots = buildSlots(grouped.hot, {
+    date: "2026-07-01",
+    maxTemperature: 35,
+    sunrise: new Date("2026-07-01T07:00:00"),
+    sunset: new Date("2026-07-01T21:00:00"),
+    solarZenith: new Date("2026-07-01T14:00:00"),
+  }, new Set(ROOMS.kitchen));
+  assert.ok(slots.every((slot) => slot.commands.every(({ device }) => !ROOMS.kitchen.includes(device as typeof ROOMS.kitchen[number]))));
 });
 
 test("hot rules form nine deterministic time slots", () => {
@@ -127,7 +166,7 @@ function slot(value: { time: Date; commands: Array<{ device: string; action: str
 }
 
 function minimalRules(fields: string, action = "open", time = "17:00", extraGroup = ""): string {
-  return `thresholds:\n  hot_above: 28\n  cold_below: 18\nhot:\n${group("test", action, fields, time)}${extraGroup}mild: []\ncold: []\n`;
+  return `thresholds:\n  hot_above: 28\n  cold_below: 18\ndisabled: []\nhot:\n${group("test", action, fields, time)}${extraGroup}mild: []\ncold: []\n`;
 }
 
 function group(name: string, action: string, fields: string, time = "17:00"): string {

@@ -19,6 +19,17 @@ export const DEVICES = [
 ] as const;
 export type Device = (typeof DEVICES)[number];
 
+export const ROOMS = {
+  kitchen: ["persiana-cuina-sud", "persiana-cuina-pica"],
+  "living-room": ["persiana-menjador"],
+  library: ["persiana-marc-piscina", "persiana-marc-nord"],
+  bedroom: ["persiana-dormitori"],
+  bathroom: ["persiana-bany"],
+  "habitacio-suli": ["persiana-conills", "persiana-habitacio-sud"],
+} as const satisfies Record<string, readonly Device[]>;
+export type Room = keyof typeof ROOMS;
+export type RuleEntity = Device | Room | "all";
+
 export interface ActionRule {
   trigger: Trigger;
   offset: number;
@@ -30,13 +41,14 @@ export interface ActionRule {
 
 export interface RuleGroup {
   name: string;
-  entities: Array<Device | "all">;
+  entities: RuleEntity[];
   open?: ActionRule;
   close?: ActionRule;
 }
 
 export interface ShutterRules {
   thresholds: { hotAbove: number; coldBelow: number };
+  disabled: Room[];
   hot: RuleGroup[];
   mild: RuleGroup[];
   cold: RuleGroup[];
@@ -54,7 +66,7 @@ export function parseRules(content: string): ShutterRules {
     throw new Error(`invalid YAML: ${message(error)}`);
   }
   const root = object(value, "rules");
-  exactKeys(root, ["thresholds", ...BANDS], "rules");
+  exactKeys(root, ["thresholds", "disabled", ...BANDS], "rules");
   const thresholds = object(root.thresholds, "thresholds");
   exactKeys(thresholds, ["hot_above", "cold_below"], "thresholds");
   const hotAbove = finiteNumber(thresholds.hot_above, "thresholds.hot_above");
@@ -63,6 +75,7 @@ export function parseRules(content: string): ShutterRules {
 
   return {
     thresholds: { hotAbove, coldBelow },
+    disabled: parseRooms(root.disabled),
     hot: parseBand(root.hot, "hot"),
     mild: parseBand(root.mild, "mild"),
     cold: parseBand(root.cold, "cold"),
@@ -79,6 +92,19 @@ export function isBand(value: string): value is Band {
   return BANDS.includes(value as Band);
 }
 
+export function expandEntities(entities: readonly RuleEntity[]): Device[] {
+  const devices = entities.flatMap((entity) => entity === "all" ? DEVICES : entity in ROOMS ? ROOMS[entity as Room] : [entity as Device]);
+  return [...new Set(devices)];
+}
+
+function parseRooms(value: unknown): Room[] {
+  if (!Array.isArray(value)) throw new Error("disabled must be a list");
+  return value.map((room, index) => {
+    if (typeof room === "string" && room in ROOMS) return room as Room;
+    throw new Error(`disabled[${index}] is not a known room`);
+  });
+}
+
 function parseBand(value: unknown, band: Band): RuleGroup[] {
   if (!Array.isArray(value)) throw new Error(`${band} must be a list`);
   return value.map((entry, index) => parseGroup(entry, `${band}[${index}]`));
@@ -90,8 +116,8 @@ function parseGroup(value: unknown, path: string): RuleGroup {
   if (typeof group.name !== "string" || !group.name.trim()) throw new Error(`${path}.name must be a non-empty string`);
   if (!Array.isArray(group.entities) || group.entities.length === 0) throw new Error(`${path}.entities must be a non-empty list`);
   const entities = group.entities.map((entity, index) => {
-    if (entity === "all" || (typeof entity === "string" && DEVICES.includes(entity as Device))) return entity as Device | "all";
-    throw new Error(`${path}.entities[${index}] is not a known shutter`);
+    if (entity === "all" || (typeof entity === "string" && (DEVICES.includes(entity as Device) || entity in ROOMS))) return entity as RuleEntity;
+    throw new Error(`${path}.entities[${index}] is not a known shutter or room`);
   });
   if (entities.includes("all") && entities.length !== 1) throw new Error(`${path}.entities cannot combine all with named shutters`);
   const result: RuleGroup = { name: group.name, entities };

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { atomicWrite, type DayForecast, ForecastService, localDate } from "./forecast.js";
-import { BANDS, DEVICES, bandForTemperature, loadRules, type ActionRule, type Band, type Device, type RuleGroup, type ShutterRules, type Trigger } from "./rules.js";
+import { BANDS, ROOMS, bandForTemperature, expandEntities, loadRules, type ActionRule, type Band, type Device, type RuleGroup, type ShutterRules, type Trigger } from "./rules.js";
 import { Shutters, type ShutterCommand } from "./shutters.js";
 
 interface OverrideState { date: string; band: Band }
@@ -75,7 +75,8 @@ export class Planner {
     if (firedState?.date !== forecast.date) await this.saveFired(forecast.date, fired);
 
     const now = new Date();
-    const slots = buildSlots(rules[band], forecast).filter((slot) => slot.time > now && !fired.has(slot.id));
+    const disabled = new Set(rules.disabled.flatMap((room) => ROOMS[room]));
+    const slots = buildSlots(rules[band], forecast, disabled).filter((slot) => slot.time > now && !fired.has(slot.id));
     this.clearSlotTimers();
     for (const slot of slots) {
       const timer = setTimeout(() => {
@@ -148,16 +149,14 @@ export class Planner {
   }
 }
 
-export function buildSlots(groups: RuleGroup[], forecast: DayForecast): PlannedSlot[] {
+export function buildSlots(groups: RuleGroup[], forecast: DayForecast, disabled = new Set<Device>()): PlannedSlot[] {
   const byMinute = new Map<string, PlannedSlot>();
   for (const group of groups) {
     for (const action of ["open", "close"] as const) {
       const rule = group[action];
       if (!rule) continue;
       const finalTime = triggerTime(rule.trigger, rule.time, rule.offset, forecast);
-      const entities: readonly Device[] = group.entities.includes("all")
-        ? DEVICES
-        : group.entities.filter((device): device is Device => device !== "all");
+      const entities = expandEntities(group.entities).filter((device) => !disabled.has(device));
       for (const target of targets(action, rule, finalTime)) {
         if (rule.duration !== undefined && localDate(target.time) !== forecast.date) throw new Error(`${group.name}.${action} gradual window crosses midnight`);
         const id = `${forecast.date}:${clock(target.time).replace(":", "")}`;

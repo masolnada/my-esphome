@@ -12,8 +12,17 @@ sunrise, and sunset. Solar zenith is the midpoint of sunrise and sunset.
 The forecast maximum selects one band:
 
 - `hot`: above 28 °C
-- `mild`: 18–28 °C inclusive
-- `cold`: below 18 °C
+- `mild`: 23–28 °C inclusive; no automatic movement
+- `cold`: below 23 °C; fully open at sunrise and fully close at sunset
+
+Cold rules are grouped by orientation:
+- East: kitchen sink, living room, and library pool window.
+- South: kitchen south window.
+- West: bathroom.
+- North: library north window and bedroom.
+
+Suli's room (west-facing rabbit window and south-facing window) remains excluded
+from all automatic scheduling. Hot rules are unchanged.
 
 The response is cached under `/data/state`. If fetching fails, today's entry
 from the cache is used. Rules come from `shutter_rules.yaml`; empty bands mean

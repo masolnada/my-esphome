@@ -29,5 +29,17 @@ is no starting-endpoint command or homing. Only use gradual rules when the
 expected starting endpoint is reliable: a wrong assumption can move a shutter
 in the opposite direction. Manual STOP does not cancel later scheduled steps.
 
+Canonical rooms are:
+- `kitchen`: `persiana-cuina-sud`, `persiana-cuina-pica`
+- `living-room`: `persiana-menjador`
+- `library`: `persiana-marc-piscina`, `persiana-marc-nord`
+- `bedroom`: `persiana-dormitori`
+- `bathroom`: `persiana-bany`
+- `habitacio-suli`: `persiana-conills`, `persiana-habitacio-sud`
+
+Rules may use room names as entities. Disabling a room means adding it to the
+top-level `disabled` list; this suppresses automatic scheduling only and never
+manual control. Enabling removes it from that list.
+
 Ask one short question if the requested band, shutter, action, or trigger is
 unclear. Never invent a shutter name.
