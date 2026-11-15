@@ -13,7 +13,11 @@ The forecast maximum selects one band:
 
 - `hot`: above 28 °C
 - `mild`: 23–28 °C inclusive; no automatic movement
-- `cold`: below 23 °C; fully open at sunrise and fully close at sunset
+- `cold`: below 23 °C; open at sunrise, except kitchen sink and bathroom
+  30 minutes earlier and kitchen south 30 minutes later. Bathroom opens to 63%
+  early, then fully at sunrise; other opening rules fully open. Fully close
+  20 minutes after sunset, except
+  kitchen south and Suli's room at sunset.
 
 Cold rules are grouped by orientation:
 - East: kitchen sink, living room, and library pool window.
@@ -21,8 +25,9 @@ Cold rules are grouped by orientation:
 - West: bathroom.
 - North: library north window and bedroom.
 
-Suli's room (west-facing rabbit window and south-facing window) remains excluded
-from all automatic scheduling. Hot rules are unchanged.
+Suli's room (west-facing rabbit window and south-facing window) only closes at
+sunset on cold days; it has no automatic opening or hot-day rules. Hot rules
+are unchanged.
 
 The response is cached under `/data/state`. If fetching fails, today's entry
 from the cache is used. Rules come from `shutter_rules.yaml`; empty bands mean

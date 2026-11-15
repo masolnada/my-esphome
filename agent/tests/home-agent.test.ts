@@ -34,38 +34,49 @@ test("temperature boundaries and live-derived rule file", () => {
   assert.equal(bandForTemperature(23, rules), "mild");
   assert.equal(bandForTemperature(22.9, rules), "cold");
   assert.equal(rules.hot.length, 6);
-  assert.deepEqual(rules.disabled, ["habitacio-suli"]);
+  assert.deepEqual(rules.disabled, []);
   assert.deepEqual(rules.mild, []);
-  assert.equal(rules.cold.length, 4);
+  assert.equal(rules.cold.length, 7);
 });
 
-test("cold rules group by orientation and open at sunrise, close at sunset", () => {
+test("cold rules open bathroom to 63% early then fully at sunrise, with Suli closing only at sunset", () => {
   assert.deepEqual(rules.cold.map(({ entities }) => entities), [
-    ["persiana-cuina-pica", "persiana-menjador", "persiana-marc-piscina"],
+    ["persiana-cuina-pica"],
+    ["persiana-menjador", "persiana-marc-piscina"],
     ["persiana-cuina-sud"],
     ["persiana-bany"],
+    ["persiana-bany"],
     ["persiana-marc-nord", "persiana-dormitori"],
+    [...ROOMS["habitacio-suli"]],
   ]);
   const forecast = { ...day("2026-01-15"), maxTemperature: 22.9 };
   const disabled = new Set(rules.disabled.flatMap((room) => ROOMS[room]));
   const slots = buildSlots(rules[bandForTemperature(forecast.maxTemperature, rules)], forecast, disabled);
   const devices = [
-    "persiana-bany", "persiana-cuina-pica", "persiana-cuina-sud", "persiana-dormitori",
+    "persiana-bany", "persiana-cuina-pica", "persiana-dormitori",
     "persiana-marc-nord", "persiana-marc-piscina", "persiana-menjador",
   ];
   assert.deepEqual(slots.map(({ time, commands }) => ({
     time,
     commands: [...commands].sort((a, b) => a.device.localeCompare(b.device)),
   })), [
-    { time: forecast.sunrise, commands: devices.map((device) => ({ device, action: "OPEN" })) },
-    { time: forecast.sunset, commands: devices.map((device) => ({ device, action: "CLOSE" })) },
+    { time: new Date(forecast.sunrise.getTime() - 30 * 60_000), commands: [
+      { device: "persiana-bany", action: "63" },
+      { device: "persiana-cuina-pica", action: "OPEN" },
+    ] },
+    { time: forecast.sunrise, commands: devices.filter((device) => device !== "persiana-cuina-pica").map((device) => ({ device, action: "OPEN" })) },
+    { time: new Date(forecast.sunrise.getTime() + 30 * 60_000), commands: [{ device: "persiana-cuina-sud", action: "OPEN" }] },
+    { time: forecast.sunset, commands: ["persiana-conills", "persiana-cuina-sud", "persiana-habitacio-sud"].map((device) => ({ device, action: "CLOSE" })) },
+    { time: new Date(forecast.sunset.getTime() + 20 * 60_000), commands: devices.map((device) => ({ device, action: "CLOSE" })) },
   ]);
   assert.deepEqual(buildSlots(rules.mild, forecast, disabled), []);
+  assert.ok(buildSlots(rules.hot, forecast, disabled).every(({ commands }) =>
+    commands.every(({ device }) => !ROOMS["habitacio-suli"].includes(device as typeof ROOMS["habitacio-suli"][number]))));
 });
 
 test("rules reject unknown hardware and excessive offsets", () => {
   assert.throws(() => parseRules(rulesText.replace("persiana-bany", "persiana-inventada")), /known shutter/);
-  assert.throws(() => parseRules(rulesText.replace("  - habitacio-suli", "  - garage")), /known room/);
+  assert.throws(() => parseRules(rulesText.replace("disabled: []", "disabled: [garage]")), /known room/);
   assert.throws(() => parseRules(rulesText.replace("offset: -60", "offset: -181")), /between -180 and 180/);
 });
 

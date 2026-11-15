@@ -8,8 +8,7 @@ thresholds:
   cold_below: 23
 
 # Rooms listed here are excluded from automatic scheduling. Manual control remains available.
-disabled:
-  - habitacio-suli
+disabled: []
 
 hot:
   - name: "Group 1: Living Room & Pool Area"
@@ -66,21 +65,32 @@ hot:
 
 mild: []
 cold:
-  - name: "East-Facing: Kitchen Sink, Living Room & Library Pool Window"
+  - name: "East-Facing: Kitchen Sink"
     entities:
       - persiana-cuina-pica
+    open:
+      trigger: sunrise
+      offset: -30
+    close:
+      trigger: sunset
+      offset: 20
+
+  - name: "East-Facing: Living Room & Library Pool Window"
+    entities:
       - persiana-menjador
       - persiana-marc-piscina
     open:
       trigger: sunrise
     close:
       trigger: sunset
+      offset: 20
 
   - name: "South-Facing: Kitchen"
     entities:
       - persiana-cuina-sud
     open:
       trigger: sunrise
+      offset: 30
     close:
       trigger: sunset
 
@@ -89,8 +99,17 @@ cold:
       - persiana-bany
     open:
       trigger: sunrise
+      offset: -30
+      position: 63
     close:
       trigger: sunset
+      offset: 20
+
+  - name: "West-Facing: Bathroom Full Open"
+    entities:
+      - persiana-bany
+    open:
+      trigger: sunrise
 
   - name: "North-Facing: Library & Bedroom"
     entities:
@@ -98,5 +117,13 @@ cold:
       - persiana-dormitori
     open:
       trigger: sunrise
+    close:
+      trigger: sunset
+      offset: 20
+
+  - name: "Suli's Room: Sunset Close"
+    entities:
+      - persiana-conills
+      - persiana-habitacio-sud
     close:
       trigger: sunset
