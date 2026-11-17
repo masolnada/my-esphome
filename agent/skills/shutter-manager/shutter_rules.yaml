@@ -100,7 +100,7 @@ cold:
     open:
       trigger: sunrise
       offset: -30
-      position: 63
+      position: 60
     close:
       trigger: sunset
       offset: 20

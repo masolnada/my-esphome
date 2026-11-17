@@ -39,7 +39,7 @@ test("temperature boundaries and live-derived rule file", () => {
   assert.equal(rules.cold.length, 7);
 });
 
-test("cold rules open bathroom to 63% early then fully at sunrise, with Suli closing only at sunset", () => {
+test("cold rules open bathroom to 60% early then fully at sunrise, with Suli closing only at sunset", () => {
   assert.deepEqual(rules.cold.map(({ entities }) => entities), [
     ["persiana-cuina-pica"],
     ["persiana-menjador", "persiana-marc-piscina"],
@@ -61,7 +61,7 @@ test("cold rules open bathroom to 63% early then fully at sunrise, with Suli clo
     commands: [...commands].sort((a, b) => a.device.localeCompare(b.device)),
   })), [
     { time: new Date(forecast.sunrise.getTime() - 30 * 60_000), commands: [
-      { device: "persiana-bany", action: "63" },
+      { device: "persiana-bany", action: "60" },
       { device: "persiana-cuina-pica", action: "OPEN" },
     ] },
     { time: forecast.sunrise, commands: devices.filter((device) => device !== "persiana-cuina-pica").map((device) => ({ device, action: "OPEN" })) },

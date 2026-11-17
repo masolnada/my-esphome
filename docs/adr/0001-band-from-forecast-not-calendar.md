@@ -2,7 +2,7 @@
 
 Current configuration: `cold` below 23 °C opens shutters at sunrise (kitchen
 sink and bathroom: 30 minutes earlier; kitchen south: 30 minutes later).
-Bathroom opens to 63% early, then fully at sunrise; other opening rules fully
+Bathroom opens to 60% early, then fully at sunrise; other opening rules fully
 open. Shutters close 20 minutes after sunset (kitchen south and Suli's room: at sunset). Suli's room has no
 automatic opening. `mild` from
 23 to 28 °C inclusive does nothing; `hot` above 28 °C retains the summer rules.

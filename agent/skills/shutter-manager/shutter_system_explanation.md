@@ -14,7 +14,7 @@ The forecast maximum selects one band:
 - `hot`: above 28 °C
 - `mild`: 23–28 °C inclusive; no automatic movement
 - `cold`: below 23 °C; open at sunrise, except kitchen sink and bathroom
-  30 minutes earlier and kitchen south 30 minutes later. Bathroom opens to 63%
+  30 minutes earlier and kitchen south 30 minutes later. Bathroom opens to 60%
   early, then fully at sunrise; other opening rules fully open. Fully close
   20 minutes after sunset, except
   kitchen south and Suli's room at sunset.
